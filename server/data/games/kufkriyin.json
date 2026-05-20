@@ -1,0 +1,1095 @@
+{
+  "id": "kufkriyin",
+  "board": [
+    [
+      {
+        "row": 0,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 2,
+        "piece": {
+          "type": "rook",
+          "color": "black",
+          "id": "b_rook_0"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 3,
+        "piece": {
+          "type": "knight",
+          "color": "black",
+          "id": "b_knight_1"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "piece": {
+          "type": "bishop",
+          "color": "black",
+          "id": "b_bishop_2"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "piece": {
+          "type": "queen",
+          "color": "black",
+          "id": "b_queen_3"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "piece": {
+          "type": "king",
+          "color": "black",
+          "id": "b_king_4"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "piece": {
+          "type": "bishop",
+          "color": "black",
+          "id": "b_bishop_5"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "piece": {
+          "type": "knight",
+          "color": "black",
+          "id": "b_knight_6"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 9,
+        "piece": {
+          "type": "rook",
+          "color": "black",
+          "id": "b_rook_7"
+        },
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 0,
+        "col": 11,
+        "piece": null,
+        "isWall": true
+      }
+    ],
+    [
+      {
+        "row": 1,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 2,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_0"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 3,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_1"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_2"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_3"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_4"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_5"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_6"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 9,
+        "piece": {
+          "type": "pawn",
+          "color": "black",
+          "id": "b_pawn_7"
+        },
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 1,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 2,
+        "col": 0,
+        "piece": null,
+        "isWall": true
+      },
+      {
+        "row": 2,
+        "col": 1,
+        "piece": null,
+        "isWall": true
+      },
+      {
+        "row": 2,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 2,
+        "col": 10,
+        "piece": null,
+        "isWall": true
+      },
+      {
+        "row": 2,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 3,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 3,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 4,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 3,
+        "piece": null,
+        "isWall": true
+      },
+      {
+        "row": 4,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 4,
+        "col": 11,
+        "piece": null,
+        "isWall": true
+      }
+    ],
+    [
+      {
+        "row": 5,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "piece": null,
+        "isWall": true
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "piece": null,
+        "isWall": true
+      }
+    ],
+    [
+      {
+        "row": 6,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 6,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 7,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 7,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 8,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 8,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 9,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 2,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 3,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 4,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 5,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 6,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 7,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 8,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 9,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 9,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 10,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 2,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_0"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 3,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_1"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 4,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_2"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 5,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_3"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 6,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_4"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 7,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_5"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 8,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_6"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 9,
+        "piece": {
+          "type": "pawn",
+          "color": "white",
+          "id": "w_pawn_7"
+        },
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 10,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ],
+    [
+      {
+        "row": 11,
+        "col": 0,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 1,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 2,
+        "piece": {
+          "type": "rook",
+          "color": "white",
+          "id": "w_rook_0"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 3,
+        "piece": {
+          "type": "knight",
+          "color": "white",
+          "id": "w_knight_1"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 4,
+        "piece": {
+          "type": "bishop",
+          "color": "white",
+          "id": "w_bishop_2"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 5,
+        "piece": {
+          "type": "queen",
+          "color": "white",
+          "id": "w_queen_3"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 6,
+        "piece": {
+          "type": "king",
+          "color": "white",
+          "id": "w_king_4"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 7,
+        "piece": {
+          "type": "bishop",
+          "color": "white",
+          "id": "w_bishop_5"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 8,
+        "piece": {
+          "type": "knight",
+          "color": "white",
+          "id": "w_knight_6"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 9,
+        "piece": {
+          "type": "rook",
+          "color": "white",
+          "id": "w_rook_7"
+        },
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 10,
+        "piece": null,
+        "isWall": false
+      },
+      {
+        "row": 11,
+        "col": 11,
+        "piece": null,
+        "isWall": false
+      }
+    ]
+  ],
+  "currentTurn": "white",
+  "phase": "setup",
+  "gameMode": "pvc",
+  "aiColor": "black",
+  "aiControlled": {
+    "white": false,
+    "black": true
+  },
+  "setupWallsRemaining": {
+    "white": 8,
+    "black": 0
+  },
+  "maxWallsPerPlayer": 8,
+  "moveHistory": [],
+  "capturedPieces": {
+    "white": [],
+    "black": []
+  },
+  "players": {
+    "white": "lhrehddgy",
+    "black": "ai-player"
+  },
+  "winner": null,
+  "attackSettings": {
+    "pawnSuccessRoll": 1,
+    "bishopMinRoll": 0,
+    "knightMinRoll": 4,
+    "bombSuccessRoll": 1,
+    "wallBuildRoll": 5,
+    "totalAttackBudget": 250,
+    "maxBishopAttacks": 10,
+    "maxRookAttacks": 10,
+    "pawnAttackPercent": 17,
+    "bishopAttackPercent": 50,
+    "knightAttackPercent": 50,
+    "bombAttackPercent": 10,
+    "wallBuildPercent": 50
+  },
+  "budgetMode": "shared",
+  "budgetReadyPlayers": [],
+  "aiDepth": 0,
+  "maxBishopAttacks": 10,
+  "maxRookAttacks": 10,
+  "specialAttackCounts": {},
+  "whiteAttackSettings": {
+    "pawnSuccessRoll": 1,
+    "bishopMinRoll": 0,
+    "knightMinRoll": 4,
+    "bombSuccessRoll": 1,
+    "wallBuildRoll": 5,
+    "totalAttackBudget": 250,
+    "maxBishopAttacks": 10,
+    "maxRookAttacks": 10,
+    "pawnAttackPercent": 17,
+    "bishopAttackPercent": 50,
+    "knightAttackPercent": 50,
+    "bombAttackPercent": 10,
+    "wallBuildPercent": 50
+  },
+  "blackAttackSettings": {
+    "pawnSuccessRoll": 1,
+    "bishopMinRoll": 0,
+    "knightMinRoll": 4,
+    "bombSuccessRoll": 1,
+    "wallBuildRoll": 5,
+    "totalAttackBudget": 250,
+    "maxBishopAttacks": 10,
+    "maxRookAttacks": 10,
+    "pawnAttackPercent": 17,
+    "bishopAttackPercent": 50,
+    "knightAttackPercent": 50,
+    "bombAttackPercent": 10,
+    "wallBuildPercent": 50
+  }
+}
