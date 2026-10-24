@@ -88,7 +88,7 @@ export function GameRules() {
             </AccordionTrigger>
             <AccordionContent className="text-xs text-muted-foreground space-y-1">
               <p>Success chance for each attack depends on the percentage you assigned in the attack budget.</p>
-              <p><strong>Pawn Attack:</strong> A pawn can attempt to capture an adjacent enemy. Success chance is based on your pawn attack budget percentage.</p>
+              <p><strong>Pawn Attack:</strong> A pawn can attempt to capture an adjacent enemy. Pawn attacks always succeed (100%).</p>
               <p><strong>Bishop Arrow:</strong> Select a bishop and click the orange target icon. Fires an arrow at a distant enemy along its diagonal. Success chance is based on your bishop attack budget. Knights and Rooks are immune to arrows.</p>
               <p><strong>Knight Axe:</strong> Select a knight and click the purple axe icon. Strikes an adjacent enemy. Success chance is based on your knight axe budget.</p>
               <p><strong>Rook Bomb:</strong> Select a rook and click the red bomb icon. Destroys an adjacent wall. Success chance is based on your bomb budget.</p>
@@ -106,9 +106,9 @@ export function GameRules() {
             </AccordionTrigger>
             <AccordionContent className="text-xs text-muted-foreground space-y-1">
               <p><strong>Player vs Player:</strong> Create a game and share the link. The second player joins as the opponent.</p>
-              <p><strong>Player vs Computer:</strong> Play against an AI opponent with configurable difficulty (AI Depth 0-8). Higher depth means the AI thinks further ahead.</p>
-              <p><strong>Computer vs Computer:</strong> Watch two AIs play each other at full speed. You can load a saved CvC game and take over as either side.</p>
-              <p>AI depth uses minimax with alpha-beta pruning for regular moves. Special attacks (arrows, axes, bombs) are scored with heuristics since they are probabilistic.</p>
+              <p><strong>Player vs Computer:</strong> The default computer is the cand-r32 FILTER champion. It does not look ahead. The legacy heuristic is still available, and AI Depth 0-8 applies only to that policy.</p>
+              <p><strong>Computer vs Computer:</strong> Watch two computers play each other. The default for both sides is cand-r32. You can load a saved CvC game and take over as either side.</p>
+              <p>The legacy policy can use minimax with alpha-beta pruning for regular moves. Special attacks (arrows, axes, bombs) stay heuristic because they are probabilistic. cand-r32 does not search ahead.</p>
             </AccordionContent>
           </AccordionItem>
           

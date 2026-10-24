@@ -8,6 +8,8 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test": "tsx server/policy/policy.spec.ts",
+    "cvc-smoke": "tsx script/cvc-smoke.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

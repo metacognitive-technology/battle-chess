@@ -10,7 +10,7 @@ import { GameRules } from "@/components/GameRules";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useToast } from "@/hooks/use-toast";
 import { getValidMoves, getCheckSafeMoves, getArrowTargets, getAxeTargets, getBombTargets, getWallBuildTargets, findHangingPieces, isInCheck, isCheckmate, createInitialBoard, PIECE_SYMBOLS } from "@/lib/gameUtils";
-import type { Position, GameState, SavedGameInfo, PromotionPieceType } from "@shared/schema";
+import type { Position, GameState, SavedGameInfo, PromotionPieceType, ComputerPolicyId } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Wifi, WifiOff, Plus, Link2, Bot, Users, History, Trash2, MonitorPlay, Play, ArrowLeft, ArrowRight, User, Brain } from "lucide-react";
@@ -106,19 +106,21 @@ export default function Game() {
   
   // Attack probability settings (percentage-based)
   const [totalAttackBudget, setTotalAttackBudget] = useState(250);
-  const [pawnAttackPercent, setPawnAttackPercent] = useState(17);
+  const pawnAttackPercent = 100;
   const [bishopAttackPercent, setBishopAttackPercent] = useState(50);
   const [knightAttackPercent, setKnightAttackPercent] = useState(50);
   const [bombAttackPercent, setBombAttackPercent] = useState(10);
   const [wallBuildPercent, setWallBuildPercent] = useState(50);
   const [budgetMode, setBudgetMode] = useState<'shared' | 'individual'>('shared');
+  const [computerPolicy, setComputerPolicy] = useState<ComputerPolicyId>('cand-r32');
   const [aiDepth, setAiDepth] = useState(0);
   const [maxBishopAttacksLobby, setMaxBishopAttacksLobby] = useState(10);
   const [maxRookAttacksLobby, setMaxRookAttacksLobby] = useState(10);
   const [attackStats, setAttackStats] = useState<{ gamesPlayed: number; bishopArrows: { min: number; avg: number; max: number }; rookBombs: { min: number; avg: number; max: number }; rookWallBuilds: { min: number; avg: number; max: number } } | null>(null);
   const [budgetSubmitted, setBudgetSubmitted] = useState(false);
 
-  const totalUsed = pawnAttackPercent + bishopAttackPercent + knightAttackPercent + bombAttackPercent + wallBuildPercent;
+  // Pawn attacks are always 100% and are not drawn from the shared budget.
+  const totalUsed = bishopAttackPercent + knightAttackPercent + bombAttackPercent + wallBuildPercent;
   const budgetRemaining = totalAttackBudget - totalUsed;
 
   const clampToAttackBudget = (newValue: number, currentValue: number) => {
@@ -189,7 +191,7 @@ export default function Game() {
         bombAttackPercent,
         wallBuildPercent,
       };
-      const response = await apiRequest('POST', '/api/games/cvc', { maxWalls, attackSettings, aiDepth });
+      const response = await apiRequest('POST', '/api/games/cvc', { maxWalls, attackSettings, aiDepth, computerPolicy });
       const data = await response.json();
       queryClient.invalidateQueries({ queryKey: ['/api/games'] });
       watchCvCGame(data.gameId);
@@ -206,7 +208,7 @@ export default function Game() {
     } finally {
       setIsCreatingCvC(false);
     }
-  }, [maxWalls, toast, watchCvCGame, pawnAttackPercent, bishopAttackPercent, knightAttackPercent, bombAttackPercent, wallBuildPercent, totalAttackBudget, percentToThreshold, aiDepth, maxBishopAttacksLobby, maxRookAttacksLobby]);
+  }, [maxWalls, toast, watchCvCGame, pawnAttackPercent, bishopAttackPercent, knightAttackPercent, bombAttackPercent, wallBuildPercent, totalAttackBudget, percentToThreshold, aiDepth, computerPolicy, maxBishopAttacksLobby, maxRookAttacksLobby]);
 
   const handleTakeoverGame = useCallback((gameId: string, color: 'white' | 'black') => {
     takeoverGame(gameId, color);
@@ -800,9 +802,32 @@ export default function Game() {
             </div>
 
             <div className="space-y-2">
+              <Label>Computer Policy</Label>
+              <Select
+                value={computerPolicy}
+                onValueChange={(v) => setComputerPolicy(v as ComputerPolicyId)}
+              >
+                <SelectTrigger data-testid="select-computer-policy">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cand-r32">cand-r32 (FILTER champion)</SelectItem>
+                  <SelectItem value="legacy">Legacy heuristic</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {computerPolicy === 'cand-r32'
+                  ? 'Default for every computer player. FILTER champion, no look-ahead.'
+                  : 'Previous heuristic. The depth slider below searches regular moves.'}
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <div className="flex justify-between text-xs">
                 <Label>AI Look-Ahead (Ply Depth)</Label>
-                <span className="text-muted-foreground">{aiDepth === 0 ? 'Off (fast)' : `${aiDepth} ply${aiDepth > 1 ? 's' : ''}`}</span>
+                <span className="text-muted-foreground">
+                  {computerPolicy !== 'legacy' ? 'Legacy only' : aiDepth === 0 ? 'Off (fast)' : `${aiDepth} ply${aiDepth > 1 ? 's' : ''}`}
+                </span>
               </div>
               <input
                 type="range"
@@ -811,15 +836,17 @@ export default function Game() {
                 step="1"
                 value={aiDepth}
                 onChange={(e) => setAiDepth(parseInt(e.target.value))}
-                className="w-full accent-primary"
+                className="w-full accent-primary disabled:opacity-50"
+                disabled={computerPolicy !== 'legacy'}
                 data-testid="slider-ai-depth"
               />
               <p className="text-xs text-muted-foreground">
-                {aiDepth === 0 && 'Instant moves, heuristic only.'}
-                {aiDepth >= 1 && aiDepth <= 2 && `Thinks ${aiDepth} move${aiDepth > 1 ? 's' : ''} ahead. Quick.`}
-                {aiDepth >= 3 && aiDepth <= 4 && `Thinks ${aiDepth} moves ahead. Moderate.`}
-                {aiDepth >= 5 && aiDepth <= 6 && `Thinks ${aiDepth} moves ahead. Slow but strong.`}
-                {aiDepth >= 7 && `Thinks ${aiDepth} moves ahead. Very slow, strongest.`}
+                {computerPolicy !== 'legacy' && 'cand-r32 does not look ahead. This slider applies only to the legacy policy.'}
+                {computerPolicy === 'legacy' && aiDepth === 0 && 'Instant moves, heuristic only.'}
+                {computerPolicy === 'legacy' && aiDepth >= 1 && aiDepth <= 2 && `Thinks ${aiDepth} move${aiDepth > 1 ? 's' : ''} ahead. Quick.`}
+                {computerPolicy === 'legacy' && aiDepth >= 3 && aiDepth <= 4 && `Thinks ${aiDepth} moves ahead. Moderate.`}
+                {computerPolicy === 'legacy' && aiDepth >= 5 && aiDepth <= 6 && `Thinks ${aiDepth} moves ahead. Slow but strong.`}
+                {computerPolicy === 'legacy' && aiDepth >= 7 && `Thinks ${aiDepth} moves ahead. Very slow, strongest.`}
               </p>
             </div>
 
@@ -882,10 +909,9 @@ export default function Game() {
                   onChange={(e) => {
                     const newBudget = parseInt(e.target.value);
                     setTotalAttackBudget(newBudget);
-                    const currentTotal = pawnAttackPercent + bishopAttackPercent + knightAttackPercent + bombAttackPercent + wallBuildPercent;
-                    if (currentTotal > newBudget) {
+                    const currentTotal = bishopAttackPercent + knightAttackPercent + bombAttackPercent + wallBuildPercent;
+                    if (currentTotal > newBudget && currentTotal > 0) {
                       const scale = newBudget / currentTotal;
-                      setPawnAttackPercent(Math.round(pawnAttackPercent * scale));
                       setBishopAttackPercent(Math.round(bishopAttackPercent * scale));
                       setKnightAttackPercent(Math.round(knightAttackPercent * scale));
                       setBombAttackPercent(Math.round(bombAttackPercent * scale));
@@ -908,17 +934,18 @@ export default function Game() {
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
                       <Label>Pawn Attack</Label>
-                      <span className="text-muted-foreground">{pawnAttackPercent}%</span>
+                      <span className="text-muted-foreground">100%</span>
                     </div>
                     <input
                       type="range"
-                      min="0"
+                      min="100"
                       max="100"
-                      value={pawnAttackPercent}
-                      onChange={(e) => setPawnAttackPercent(clampToAttackBudget(parseInt(e.target.value), pawnAttackPercent))}
-                      className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+                      value={100}
+                      disabled
+                      className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-not-allowed opacity-70"
                       data-testid="slider-pawn-attack"
                     />
+                    <p className="text-xs text-muted-foreground">Pawn attacks always succeed and are not part of the budget.</p>
                   </div>
                   
                   <div className="space-y-1">
@@ -1004,7 +1031,7 @@ export default function Game() {
                     maxRookAttacks: maxRookAttacksLobby,
                     ...(budgetMode === 'shared' ? { pawnAttackPercent, bishopAttackPercent, knightAttackPercent, bombAttackPercent, wallBuildPercent } : {}),
                   };
-                  createGame(maxWalls, 'pvc', as, budgetMode, aiDepth);
+                  createGame(maxWalls, 'pvc', as, budgetMode, aiDepth, computerPolicy);
                 }}
                 data-testid="button-play-computer"
               >
@@ -1028,7 +1055,7 @@ export default function Game() {
                     maxRookAttacks: maxRookAttacksLobby,
                     ...(budgetMode === 'shared' ? { pawnAttackPercent, bishopAttackPercent, knightAttackPercent, bombAttackPercent, wallBuildPercent } : {}),
                   };
-                  createGame(maxWalls, 'pvp', as, budgetMode);
+                  createGame(maxWalls, 'pvp', as, budgetMode, aiDepth, computerPolicy);
                 }}
                 data-testid="button-create-game"
               >
@@ -1312,12 +1339,12 @@ export default function Game() {
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
                       <Label>Pawn Attack</Label>
-                      <span className="text-muted-foreground">{pawnAttackPercent}%</span>
+                      <span className="text-muted-foreground">100%</span>
                     </div>
-                    <input type="range" min="0" max="100" value={pawnAttackPercent}
-                      onChange={(e) => setPawnAttackPercent(clampToAttackBudget(parseInt(e.target.value), pawnAttackPercent))}
-                      className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+                    <input type="range" min="100" max="100" value={100} disabled
+                      className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-not-allowed opacity-70"
                       data-testid="budget-slider-pawn" />
+                    <p className="text-xs text-muted-foreground">Always succeeds. Not drawn from this budget.</p>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
@@ -1495,7 +1522,7 @@ export default function Game() {
                 <CardContent className="p-3 pt-0">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                     <span className="text-muted-foreground">Pawn</span>
-                    <span data-testid="text-own-pawn-percent">{gameState.attackSettings.pawnAttackPercent ?? '?'}%</span>
+                    <span data-testid="text-own-pawn-percent">100%</span>
                     <span className="text-muted-foreground">Bishop</span>
                     <span data-testid="text-own-bishop-percent">{gameState.attackSettings.bishopAttackPercent ?? '?'}%</span>
                     <span className="text-muted-foreground">Knight</span>
@@ -1505,7 +1532,7 @@ export default function Game() {
                     <span className="text-muted-foreground">Wall Build</span>
                     <span data-testid="text-own-wall-percent">{gameState.attackSettings.wallBuildPercent ?? '?'}%</span>
                   </div>
-                  {gameState.attackSettings.budgetMode === 'individual' && (
+                  {gameState.budgetMode === 'individual' && (
                     <p className="text-xs text-muted-foreground mt-1 italic">Opponent's settings are hidden</p>
                   )}
                 </CardContent>

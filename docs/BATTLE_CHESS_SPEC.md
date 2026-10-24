@@ -269,8 +269,8 @@ All attack probabilities are configured as **percentages** (0–100). When a per
 
 ### 7.1 Pawn Attack
 - **Trigger**: Pawn moves to a square occupied by an enemy piece.
-- **Dice**: d6. Success if `roll <= pawnSuccessRoll` (or `Math.random()*100 < pawnAttackPercent`).
-- **Failure**: Pawn stays in place; turn passes to opponent.
+- **Success**: Always (100%) for every player. The server still rolls a d6 for the animation and stores `pawnAttackPercent` 100 / `pawnSuccessRoll` 6. Pawn percent is not drawn from the attack budget.
+- **Failure**: Does not occur. A failed pawn attack used to leave the pawn in place and pass the turn.
 - **Animation**: Sword emoji (⚔️), yellow flash on attacker on failure; red flash on target on success.
 
 ### 7.2 Bishop Arrow Attack
@@ -596,7 +596,7 @@ Shown when `!gameState`.
    - *Total Attack Budget* slider: 0–500%, default 250%.
    - *Budget Mode* toggle: Shared / Individual.
    - Attack percentage sliders (shown in shared mode):
-     - Pawn Attack %: 0–100, default 17.
+     - Pawn Attack %: fixed at 100. Not part of the budget sum.
      - Bishop Arrow %: 0–100, default 50.
      - Knight Axe %: 0–100, default 50.
      - Rook Bomb %: 0–100, default 10.
@@ -869,9 +869,10 @@ Sounds are generated using the **Web Audio API** (no external audio files).
 ## 22. Lobby Configuration Details
 
 ### 22.1 Attack Budget System
-- **Total Attack Budget**: A pool of percentage points (e.g. 250) shared across all 5 attack types.
-- Each attack type has an independent percentage (0–100).
-- Sum of all percentages must not exceed the budget.
+- **Total Attack Budget**: A pool of percentage points (e.g. 250) shared across bishop, knight, bomb, and wall-build attacks.
+- Pawn attacks are fixed at 100% and are excluded from that sum.
+- Each budgeted attack type has an independent percentage (0–100).
+- Sum of the budgeted percentages must not exceed the budget.
 - **Shared mode**: Creator sets percentages; both players use same settings.
 - **Individual mode**: Both players configure secretly during `budget_setup` phase.
 
@@ -888,7 +889,7 @@ wallBuildRoll   = round(wallBuildPercent / 100 * 10)    // d10, roll-under
 |---|---|---|
 | Max walls per player | 8 | 0–32 |
 | Total attack budget | 250% | 0–500% |
-| Pawn attack % | 17% | 0–100% |
+| Pawn attack % | 100% (fixed) | 100% |
 | Bishop arrow % | 50% | 0–100% |
 | Knight axe % | 50% | 0–100% |
 | Rook bomb % | 10% | 0–100% |
