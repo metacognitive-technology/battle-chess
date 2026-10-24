@@ -41,6 +41,7 @@ function formatTimeAgo(dateString: string): string {
 export default function Game() {
   const searchParams = new URLSearchParams(useSearch());
   const gameIdFromUrl = searchParams.get('game');
+  const playerIdFromUrl = searchParams.get('playerId');
   
   const { toast } = useToast();
   const [drawOffered, setDrawOffered] = useState(false);
@@ -232,12 +233,19 @@ export default function Game() {
     }
   }, [savedGames, toast]);
   
-  // Auto-join game from URL
+  // Auto-join / reconnect from URL (?game=…&playerId=… for theater PvC-from-ply)
   useEffect(() => {
     if (gameIdFromUrl && !gameState) {
-      joinGame(gameIdFromUrl);
+      if (playerIdFromUrl) {
+        try { localStorage.setItem(`playerId_${gameIdFromUrl}`, playerIdFromUrl); } catch {}
+        reconnectGame(gameIdFromUrl, playerIdFromUrl);
+      } else {
+        const stored = (() => { try { return localStorage.getItem(`playerId_${gameIdFromUrl}`); } catch { return null; } })();
+        if (stored) reconnectGame(gameIdFromUrl, stored);
+        else joinGame(gameIdFromUrl);
+      }
     }
-  }, [gameIdFromUrl, gameState, joinGame]);
+  }, [gameIdFromUrl, playerIdFromUrl, gameState, joinGame, reconnectGame]);
   
   useEffect(() => {
     if (gameState?.attackSettings?.totalAttackBudget != null) {

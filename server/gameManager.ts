@@ -4,6 +4,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { GameState, Board, Square, Piece, Position, PlayerColor, Move, PieceType, GameMessage, GameMode, AttackSettings } from "@shared/schema";
 import type { WebSocket } from "ws";
+import { exportToTheater } from "./theaterExport";
 
 const BOARD_SIZE = 12;
 const MAX_MOVE_DISTANCE = 8;
@@ -32,6 +33,14 @@ interface AStarNode {
 // Cache for A* path distances to reduce redundant calculations per AI turn
 let aStarCache: Map<string, number> = new Map();
 let aStarCacheBoard: string = '';
+
+function gameIsOver(state: GameState): boolean {
+  if (state.winner) return true;
+  const phase = typeof state.phase === "string" ? state.phase : "";
+  if (/finished|draw|stalemate|max[-_ ]?moves?/i.test(phase)) return true;
+  const status = (state as GameState & { status?: unknown }).status;
+  return typeof status === "string" && /finished|draw|stalemate|max[-_ ]?moves?/i.test(status);
+}
 
 function clearAStarCache(): void {
   aStarCache.clear();
@@ -388,6 +397,9 @@ class GameManager {
     if (state.winner) {
       this.flushGameStats(state.id);
     }
+    if (gameIsOver(state)) {
+      exportToTheater(state);
+    }
   }
 
   loadGame(gameId: string): GameState | null {
@@ -611,6 +623,121 @@ class GameManager {
     
     return { gameId, playerId, color: 'white' };
   }
+
+  /**
+   * Create a mid-game player-vs-computer room from a theater/lab ply snapshot.
+   * Human sits as side-to-move (or payload.humanColor); AI takes the other seat.
+   * Phase is always `playing` — walls already on the board; no setup.
+   */
+  createPvcFromPly(payload: {
+    sideToMove?: PlayerColor;
+    humanColor?: PlayerColor;
+    board: Array<Array<{ wall?: boolean; isWall?: boolean; piece: { type: string; color: string; id?: string; hasMoved?: boolean } | null }>>;
+    capturedPieces?: { white?: Piece[]; black?: Piece[] };
+    moveHistory?: Move[];
+    attackSettings?: AttackSettings;
+    maxBishopAttacks?: number;
+    maxRookAttacks?: number;
+    specialAttackCounts?: Record<string, number>;
+    aiDepth?: number;
+    budgetMode?: 'shared' | 'individual';
+  }): { gameId: string; playerId: string; color: PlayerColor } {
+    if (!payload?.board || !Array.isArray(payload.board) || payload.board.length !== BOARD_SIZE) {
+      throw new Error('board must be a 12x12 grid');
+    }
+    const sideToMove: PlayerColor = payload.sideToMove === 'black' ? 'black' : 'white';
+    const humanColor: PlayerColor =
+      payload.humanColor === 'white' || payload.humanColor === 'black'
+        ? payload.humanColor
+        : sideToMove;
+    const aiColor: PlayerColor = humanColor === 'white' ? 'black' : 'white';
+
+    const board: Board = [];
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      const srcRow = payload.board[row];
+      if (!srcRow || srcRow.length !== BOARD_SIZE) {
+        throw new Error(`board row ${row} must have 12 cells`);
+      }
+      const line: Square[] = [];
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        const cell = srcRow[col] || {};
+        const isWall = !!(cell.wall ?? cell.isWall);
+        let piece: Piece | null = null;
+        if (cell.piece && cell.piece.type && cell.piece.color) {
+          const type = cell.piece.type as Piece['type'];
+          const color = cell.piece.color as PlayerColor;
+          piece = {
+            type,
+            color,
+            id: cell.piece.id || `${color[0]}_${type}_${row}_${col}`,
+            hasMoved: cell.piece.hasMoved ?? true,
+          };
+        }
+        line.push({ row, col, piece, isWall });
+      }
+      board.push(line);
+    }
+
+    const defaultAttackSettings: AttackSettings = {
+      pawnSuccessRoll: 1,
+      bishopMinRoll: 0,
+      knightMinRoll: 4,
+      bombSuccessRoll: 1,
+      wallBuildRoll: 5,
+      pawnAttackPercent: 17,
+      bishopAttackPercent: 50,
+      knightAttackPercent: 50,
+      bombAttackPercent: 10,
+      wallBuildPercent: 50,
+    };
+    const finalAttackSettings = { ...defaultAttackSettings, ...(payload.attackSettings || {}) };
+    const gameId = generateShortId();
+    const playerId = generateShortId();
+    const maxBishopAttacks = Math.max(0, Math.min(75, payload.maxBishopAttacks ?? finalAttackSettings.maxBishopAttacks ?? 10));
+    const maxRookAttacks = Math.max(0, Math.min(75, payload.maxRookAttacks ?? finalAttackSettings.maxRookAttacks ?? 10));
+
+    const state: GameState = {
+      id: gameId,
+      board,
+      currentTurn: sideToMove,
+      phase: 'playing',
+      gameMode: 'pvc',
+      aiColor,
+      aiControlled: { white: aiColor === 'white', black: aiColor === 'black' },
+      setupWallsRemaining: { white: 0, black: 0 },
+      maxWallsPerPlayer: 0,
+      moveHistory: Array.isArray(payload.moveHistory) ? payload.moveHistory : [],
+      capturedPieces: {
+        white: Array.isArray(payload.capturedPieces?.white) ? payload.capturedPieces!.white! : [],
+        black: Array.isArray(payload.capturedPieces?.black) ? payload.capturedPieces!.black! : [],
+      },
+      players: {
+        white: humanColor === 'white' ? playerId : AI_PLAYER_ID,
+        black: humanColor === 'black' ? playerId : AI_PLAYER_ID,
+      },
+      winner: null,
+      attackSettings: finalAttackSettings,
+      budgetMode: payload.budgetMode || 'shared',
+      budgetReadyPlayers: [playerId, AI_PLAYER_ID],
+      aiDepth: Math.max(0, Math.min(8, payload.aiDepth ?? 0)),
+      maxBishopAttacks,
+      maxRookAttacks,
+      specialAttackCounts: payload.specialAttackCounts || {},
+      whiteAttackSettings: { ...finalAttackSettings },
+      blackAttackSettings: { ...finalAttackSettings },
+    };
+
+    const room: GameRoom = {
+      state,
+      players: new Map(),
+      readyPlayers: new Set([playerId, AI_PLAYER_ID]),
+      attackCounts: { bishopArrows: 0, rookBombs: 0, rookWallBuilds: 0 },
+    };
+    this.games.set(gameId, room);
+    this.playerToGame.set(playerId, gameId);
+    this.saveGame(state);
+    return { gameId, playerId, color: humanColor };
+  }
   
   // Active CvC game intervals
   private cvcIntervals: Map<string, NodeJS.Timeout> = new Map();
@@ -828,11 +955,190 @@ class GameManager {
     }
   }
   
+
+  /**
+   * Shared computer-player policy used by makeCvCMove and makeAIMove.
+   * Hard-filters non-escapes when any escape exists (including axe/arrow
+   * that remove the checker). Adds anti-thrash and obvious-tactics bonuses
+   * on top of existing capture / bishop-safety scores. Not a new minimax.
+   */
+  private applyComputerPolicy<T extends {
+    from: Position;
+    to: Position;
+    score: number;
+    isArrow?: boolean;
+    isAxe?: boolean;
+    isBomb?: boolean;
+    escapesCheck?: boolean;
+    policyBonus?: number;
+  }>(
+    board: Board,
+    color: PlayerColor,
+    inCheck: boolean,
+    history: Move[],
+    moves: T[],
+  ): T[] {
+    const enemy: PlayerColor = color === 'white' ? 'black' : 'white';
+
+    const simulateEscapes = (m: T): boolean => {
+      const next: Board = JSON.parse(JSON.stringify(board));
+      if (m.isArrow || m.isAxe) {
+        next[m.to.row][m.to.col].piece = null;
+      } else if (m.isBomb) {
+        next[m.to.row][m.to.col].isWall = false;
+      } else {
+        next[m.to.row][m.to.col].piece = next[m.from.row][m.from.col].piece;
+        next[m.from.row][m.from.col].piece = null;
+      }
+      return !this.isInCheck(next, color);
+    };
+
+    const isDefended = (pos: Position, byColor: PlayerColor): boolean => {
+      const cleared: Board = JSON.parse(JSON.stringify(board));
+      cleared[pos.row][pos.col].piece = null;
+      return this.isSquareAttackedBy(cleared, pos, byColor);
+    };
+
+    const kingPos = findKingPosition(board, color);
+    const checkers: Position[] = [];
+    if (inCheck && kingPos) {
+      for (let row = 0; row < BOARD_SIZE; row++) {
+        for (let col = 0; col < BOARD_SIZE; col++) {
+          const piece = board[row][col].piece;
+          if (!piece || piece.color !== enemy) continue;
+          const from = { row, col };
+          if (this.getRawAttacks(board, from, piece).some(a => a.row === kingPos.row && a.col === kingPos.col)) {
+            checkers.push(from);
+            continue;
+          }
+          if (piece.type === 'bishop' && this.getArrowTargets(board, from, enemy).some(a => a.row === kingPos.row && a.col === kingPos.col)) {
+            checkers.push(from);
+            continue;
+          }
+          if (piece.type === 'knight' && this.getAxeTargets(board, from, enemy).some(a => a.row === kingPos.row && a.col === kingPos.col)) {
+            checkers.push(from);
+          }
+        }
+      }
+    }
+
+    const valuableHits = (from: Position, side: PlayerColor, useBoard: Board): Position[] => {
+      const piece = useBoard[from.row][from.col].piece;
+      if (!piece) return [];
+      const opp: PlayerColor = side === 'white' ? 'black' : 'white';
+      const hits: Position[] = [];
+      const add = (pos: Position) => {
+        const t = useBoard[pos.row]?.[pos.col]?.piece;
+        if (!t || t.color !== opp) return;
+        if (t.type !== 'king' && t.type !== 'queen' && t.type !== 'rook') return;
+        if (!hits.some(h => h.row === pos.row && h.col === pos.col)) hits.push(pos);
+      };
+      for (const a of this.getRawAttacks(useBoard, from, piece)) add(a);
+      if (piece.type === 'knight') {
+        for (const a of this.getAxeTargets(useBoard, from, side)) add(a);
+      }
+      return hits;
+    };
+
+    let forkingKnight: Position | null = null;
+    outerFork:
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        const piece = board[row][col].piece;
+        if (!piece || piece.color !== enemy || piece.type !== 'knight') continue;
+        const hits = valuableHits({ row, col }, enemy, board);
+        const types = new Set(hits.map(h => board[h.row][h.col].piece!.type));
+        if ((types.has('queen') && types.has('rook')) || hits.length >= 2) {
+          forkingKnight = { row, col };
+          break outerFork;
+        }
+      }
+    }
+
+    const travelOf = (piece: Piece, nowAt: Position): Move[] => {
+      const isTravel = (mv: Move) => !mv.isArrowAttack && !mv.isAxeAttack && !mv.isBombAttack && !mv.isWallBuild;
+      if (piece.id) return history.filter(mv => mv.piece.id === piece.id && isTravel(mv));
+      const out: Move[] = [];
+      let at = nowAt;
+      for (let i = history.length - 1; i >= 0; i--) {
+        const mv = history[i];
+        if (!isTravel(mv)) continue;
+        if (mv.piece.color !== piece.color || mv.piece.type !== piece.type) continue;
+        if (mv.to.row === at.row && mv.to.col === at.col) {
+          out.unshift(mv);
+          at = mv.from;
+        }
+      }
+      return out;
+    };
+
+    for (const m of moves) {
+      m.escapesCheck = simulateEscapes(m);
+    }
+
+    const escapes = moves.filter(m => m.escapesCheck);
+    let pool = escapes.length > 0 ? escapes : moves;
+
+    for (const m of pool) {
+      let bonus = 0;
+      const piece = board[m.from.row][m.from.col].piece;
+      const target = board[m.to.row][m.to.col].piece;
+      const reallyCapture = !m.isBomb && !!target && target.color !== color;
+
+      if (reallyCapture && target) {
+        if (!isDefended(m.to, enemy)) bonus += 400;
+        if (checkers.some(c => c.row === m.to.row && c.col === m.to.col)) bonus += 600;
+        if (forkingKnight && forkingKnight.row === m.to.row && forkingKnight.col === m.to.col) bonus += 400;
+        if (piece?.type === 'pawn') {
+          bonus += 250;
+          if (target.type === 'knight') bonus += 150;
+        }
+      }
+      if (m.isAxe && target) {
+        if (target.type === 'king') bonus += 800;
+        else if (target.type === 'queen' || target.type === 'rook') bonus += 350;
+        else if (target.type === 'bishop' || target.type === 'knight') bonus += 200;
+      }
+      if (piece?.type === 'knight' && !m.isArrow && !m.isBomb) {
+        const probeFrom = m.isAxe ? m.from : m.to;
+        let probeBoard = board;
+        if (!m.isAxe) {
+          probeBoard = JSON.parse(JSON.stringify(board));
+          probeBoard[m.to.row][m.to.col].piece = piece;
+          probeBoard[m.from.row][m.from.col].piece = null;
+        }
+        if (valuableHits(probeFrom, color, probeBoard).length >= 2) bonus += 450;
+      }
+      if (forkingKnight && !m.isArrow && !m.isAxe && !m.isBomb && piece && (piece.type === 'queen' || piece.type === 'rook')) {
+        const stillHit = valuableHits(forkingKnight, enemy, board).some(h => h.row === m.from.row && h.col === m.from.col);
+        if (stillHit) bonus += 200;
+      }
+
+      if (!m.isArrow && !m.isAxe && !m.isBomb && piece) {
+        const trail = travelOf(piece, m.from);
+        const last = trail[trail.length - 1];
+        const prev = trail[trail.length - 2];
+        const reversal = !!(last && last.from.row === m.to.row && last.from.col === m.to.col && last.to.row === m.from.row && last.to.col === m.from.col);
+        const oscillates = !!(reversal && prev && prev.from.row === m.from.row && prev.from.col === m.from.col && prev.to.row === m.to.row && prev.to.col === m.to.col);
+        const allowed = reallyCapture || (inCheck && !!m.escapesCheck);
+        if (oscillates && !allowed) bonus -= 5000;
+        else if (reversal && !allowed) bonus -= 800;
+      }
+
+      m.policyBonus = bonus;
+      m.score += bonus;
+    }
+
+    const nonThrash = pool.filter(m => (m.policyBonus ?? 0) > -4000);
+    if (nonThrash.length > 0) pool = nonThrash;
+    return pool;
+  }
+
   private makeCvCMove(state: GameState, color: PlayerColor): false | 'regular' | 'special' {
     const board = state.board;
     const inCheck = this.isInCheck(board, color);
     
-    interface AIMove { from: Position; to: Position; score: number; isArrow?: boolean; isAxe?: boolean; isBomb?: boolean; escapesCheck?: boolean }
+    interface AIMove { from: Position; to: Position; score: number; isArrow?: boolean; isAxe?: boolean; isBomb?: boolean; escapesCheck?: boolean; policyBonus?: number }
     const possibleMoves: AIMove[] = [];
     
     for (let row = 0; row < BOARD_SIZE; row++) {
@@ -946,7 +1252,7 @@ class GameManager {
             possibleMoves.push({ from, to, score, escapesCheck });
           }
           
-          if (piece.type === 'bishop' && !inCheck) {
+          if (piece.type === 'bishop') {
             const cvcBPieceUsed = piece.id ? (state.specialAttackCounts?.[piece.id] ?? 0) : 0;
             const cvcBMax = state.maxBishopAttacks ?? 10;
             if (cvcBPieceUsed < cvcBMax) {
@@ -996,7 +1302,7 @@ class GameManager {
           }
           
           // Axe attacks for knights
-          if (piece.type === 'knight' && !inCheck) {
+          if (piece.type === 'knight') {
             const axeTargets = this.getAxeTargets(board, from, color);
             for (const to of axeTargets) {
               const targetPiece = board[to.row][to.col].piece;
@@ -1010,7 +1316,7 @@ class GameManager {
             }
           }
           
-          if (piece.type === 'rook' && !inCheck) {
+          if (piece.type === 'rook') {
             const cvcRPieceUsed = piece.id ? (state.specialAttackCounts?.[piece.id] ?? 0) : 0;
             const cvcRMax = state.maxRookAttacks ?? 10;
             if (cvcRPieceUsed < cvcRMax) {
@@ -1088,16 +1394,10 @@ class GameManager {
       }
     }
     
-    if (possibleMoves.length === 0) return false;
+    const validMoves = this.applyComputerPolicy(board, color, inCheck, state.moveHistory, possibleMoves);
+    if (validMoves.length === 0) return false;
     
-    possibleMoves.sort((a, b) => b.score - a.score);
-    
-    let validMoves = possibleMoves;
-    if (inCheck) {
-      const checkEscaping = possibleMoves.filter(m => m.escapesCheck);
-      if (checkEscaping.length > 0) validMoves = checkEscaping;
-      else return false; // No way to escape check = checkmate
-    }
+    validMoves.sort((a, b) => b.score - a.score);
     
     const topMoves = validMoves.slice(0, Math.min(3, validMoves.length));
     const selected = topMoves[Math.floor(Math.random() * topMoves.length)];
@@ -2629,7 +2929,7 @@ class GameManager {
     const inCheck = this.isInCheck(board, aiColor);
 
     // Collect all possible moves for AI
-    interface AIMove { from: Position; to: Position; score: number; isArrow?: boolean; isAxe?: boolean; isBomb?: boolean; escapesCheck?: boolean }
+    interface AIMove { from: Position; to: Position; score: number; isArrow?: boolean; isAxe?: boolean; isBomb?: boolean; escapesCheck?: boolean; policyBonus?: number }
     const possibleMoves: AIMove[] = [];
 
     for (let row = 0; row < BOARD_SIZE; row++) {
@@ -2818,7 +3118,7 @@ class GameManager {
             possibleMoves.push({ from, to, score, escapesCheck });
           }
           
-          if (piece.type === 'bishop' && !inCheck) {
+          if (piece.type === 'bishop') {
             const pvcBPieceUsed = piece.id ? (state.specialAttackCounts?.[piece.id] ?? 0) : 0;
             const pvcBMax = state.maxBishopAttacks ?? 10;
             if (pvcBPieceUsed < pvcBMax) {
@@ -2868,7 +3168,7 @@ class GameManager {
           }
           
           // Add axe attacks for knights - high priority ranged attack
-          if (piece.type === 'knight' && !inCheck) {
+          if (piece.type === 'knight') {
             const axeTargets = this.getAxeTargets(board, from, aiColor);
             for (const to of axeTargets) {
               const targetPiece = board[to.row][to.col].piece;
@@ -2883,7 +3183,7 @@ class GameManager {
             }
           }
           
-          if (piece.type === 'rook' && !inCheck) {
+          if (piece.type === 'rook') {
             const pvcRPieceUsed = piece.id ? (state.specialAttackCounts?.[piece.id] ?? 0) : 0;
             const pvcRMax = state.maxRookAttacks ?? 10;
             if (pvcRPieceUsed < pvcRMax) {
@@ -3021,17 +3321,11 @@ class GameManager {
       }
     }
 
-    if (possibleMoves.length === 0) {
+    const policyMoves = this.applyComputerPolicy(board, aiColor, inCheck, state.moveHistory, possibleMoves);
+    if (policyMoves.length === 0) {
       return null;
     }
-
-    // If in check, only consider moves that escape check
-    if (inCheck) {
-      const checkEscapingMoves = possibleMoves.filter(m => m.escapesCheck);
-      if (checkEscapingMoves.length > 0) {
-        possibleMoves.splice(0, possibleMoves.length, ...checkEscapingMoves);
-      }
-    }
+    possibleMoves.splice(0, possibleMoves.length, ...policyMoves);
 
     const aiDepth = state.aiDepth ?? 0;
     
@@ -3056,7 +3350,7 @@ class GameManager {
             continue;
           }
           const minimaxScore = this.minimax(newBoard, currentPly, -Infinity, Infinity, aiColor, enemyColor);
-          move.score = minimaxScore;
+          move.score = minimaxScore + (move.policyBonus ?? 0);
         }
       }
       
@@ -3109,10 +3403,13 @@ class GameManager {
 
   private getArrowTargets(board: Board, from: Position, color: PlayerColor): Position[] {
     const targets: Position[] = [];
-    const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+    const directions = [
+      [-1, 0], [1, 0], [0, -1], [0, 1],
+      [-1, -1], [-1, 1], [1, -1], [1, 1],
+    ];
     
     for (const [dr, dc] of directions) {
-      for (let dist = 1; dist <= 4; dist++) {
+      for (let dist = 1; dist <= 12; dist++) {
         const newRow = from.row + dr * dist;
         const newCol = from.col + dc * dist;
         
@@ -3717,6 +4014,12 @@ class GameManager {
           if (piece.type === 'bishop') {
             const arrowTargets = this.getArrowTargets(board, { row, col }, opponentColor);
             if (arrowTargets.some(pos => pos.row === kingPos.row && pos.col === kingPos.col)) {
+              return true;
+            }
+          }
+          if (piece.type === 'knight') {
+            const axeTargets = this.getAxeTargets(board, { row, col }, opponentColor);
+            if (axeTargets.some(pos => pos.row === kingPos.row && pos.col === kingPos.col)) {
               return true;
             }
           }

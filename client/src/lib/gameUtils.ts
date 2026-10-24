@@ -442,7 +442,45 @@ export function isInCheck(board: Board, color: PlayerColor): boolean {
   return false;
 }
 
-export function isCheckmate(board: Board, color: PlayerColor): boolean {
+export interface CheckmateOptions {
+  specialAttackCounts?: { [pieceId: string]: number };
+  maxRookAttacks?: number;
+}
+
+// Check if a friendly rook can build a wall that blocks the current check
+export function canEscapeCheckWithWallBuild(
+  board: Board,
+  color: PlayerColor,
+  options?: CheckmateOptions
+): boolean {
+  const maxRookAttacks = options?.maxRookAttacks ?? 10;
+  const specialAttackCounts = options?.specialAttackCounts;
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const piece = board[row][col].piece;
+      if (!piece || piece.color !== color || piece.type !== 'rook') continue;
+
+      if (piece.id) {
+        const used = specialAttackCounts?.[piece.id] ?? 0;
+        if (used >= maxRookAttacks) continue;
+      }
+
+      const targets = getWallBuildTargets(board, { row, col });
+      for (const target of targets) {
+        const newBoard: Board = JSON.parse(JSON.stringify(board));
+        newBoard[target.row][target.col].isWall = true;
+        if (!isInCheck(newBoard, color)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+export function isCheckmate(board: Board, color: PlayerColor, options?: CheckmateOptions): boolean {
   if (!isInCheck(board, color)) return false;
   
   // Check if any move can get out of check
@@ -463,6 +501,11 @@ export function isCheckmate(board: Board, color: PlayerColor): boolean {
         }
       }
     }
+  }
+
+  // Rook wall builds can block sliding attacks and bishop arrows
+  if (canEscapeCheckWithWallBuild(board, color, options)) {
+    return false;
   }
   
   return true;

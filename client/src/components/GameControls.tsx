@@ -178,7 +178,7 @@ export function GameControls({
         
         {gameId && (
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Game ID</Label>
+            <Label className="text-xs text-muted-foreground">Room Code</Label>
             <div className="flex gap-2">
               <code className="flex-1 px-2 py-1 bg-muted rounded text-xs font-mono truncate">
                 {gameId}

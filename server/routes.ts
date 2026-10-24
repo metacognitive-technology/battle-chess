@@ -190,6 +190,33 @@ export async function registerRoutes(
     }
   });
 
+  // Mid-game PvC from a theater/lab ply snapshot (CORS open for theater proxy/direct)
+  app.options('/api/games/pvc-from-ply', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(204);
+  });
+  app.post('/api/games/pvc-from-ply', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    try {
+      const result = gameManager.createPvcFromPly(req.body || {});
+      const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const origin = host ? `${proto}://${host}` : '';
+      res.json({
+        ok: true,
+        gameId: result.gameId,
+        playerId: result.playerId,
+        color: result.color,
+        url: origin ? `${origin}/?game=${encodeURIComponent(result.gameId)}&playerId=${encodeURIComponent(result.playerId)}` : `/?game=${encodeURIComponent(result.gameId)}&playerId=${encodeURIComponent(result.playerId)}`,
+      });
+    } catch (error) {
+      console.error('Failed to create PvC-from-ply game:', error);
+      res.status(400).json({ ok: false, error: (error as Error).message || 'Failed to create PvC-from-ply game' });
+    }
+  });
+
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 

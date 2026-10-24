@@ -1,0 +1,38 @@
+services:
+  battle-chess:
+    build: .
+    container_name: battle-chess
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - THEATER_ROOMS_DIR=/theater-rooms
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch(\x27http://localhost:3003/health\x27).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # Persist saved games across restarts
+      - battle-chess-data:/app/server/data/games
+      - /root/battle-chess-lab/rooms:/theater-rooms
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.battle.rule=Host(`battle.metacognitive-bot.tech`)"
+      - "traefik.http.routers.battle.entrypoints=websecure"
+      - "traefik.http.routers.battle.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.battle.priority=10"
+      - "traefik.http.services.battle.loadbalancer.server.port=3003"
+
+      # Dedicated WebSocket router for /ws
+      - "traefik.http.routers.battle-ws.rule=Host(`battle.metacognitive-bot.tech`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.battle-ws.entrypoints=websecure"
+      - "traefik.http.routers.battle-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.battle-ws.service=battle"
+      - "traefik.http.routers.battle-ws.priority=20"
+
+volumes:
+  battle-chess-data:
