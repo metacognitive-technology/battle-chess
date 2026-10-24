@@ -63,6 +63,8 @@ export type PromotionPieceType = 'queen' | 'rook' | 'bishop' | 'knight';
 export type GamePhase = 'waiting' | 'budget_setup' | 'setup' | 'playing' | 'finished';
 export type GameMode = 'pvp' | 'pvc' | 'cvc';
 export type BudgetMode = 'shared' | 'individual';
+/** cand-r32 is the FILTER champion. legacy is the previous heuristic computer. */
+export type ComputerPolicyId = 'cand-r32' | 'legacy';
 
 export interface AttackSettings {
   pawnSuccessRoll: number;
@@ -89,6 +91,8 @@ export interface GameState {
   aiColor?: PlayerColor;
   aiControlled?: { white: boolean; black: boolean };
   aiDepth?: number;
+  /** Computer-player policy. Omitted games use cand-r32. */
+  computerPolicy?: ComputerPolicyId;
   setupWallsRemaining: { white: number; black: number };
   maxWallsPerPlayer: number;
   moveHistory: Move[];
@@ -113,7 +117,7 @@ export interface GameState {
 }
 
 export interface GameMessage {
-  type: 'join' | 'setup_wall' | 'setup_random_walls' | 'setup_load_layout' | 'ready' | 'move' | 'arrow_attack' | 'axe_attack' | 'bomb_attack' | 'wall_attack' | 'state' | 'error' | 'player_joined' | 'player_left' | 'reconnect' | 'needsPromotion' | 'takeover' | 'games_updated' | 'watch_cvc' | 'stop_cvc' | 'pause_cvc' | 'offer_draw' | 'respond_draw' | 'draw_offered' | 'draw_response' | 'handoff' | 'take_control' | 'budget_submit';
+  type: 'join' | 'setup_wall' | 'setup_random_walls' | 'setup_maze_walls' | 'setup_load_layout' | 'ready' | 'move' | 'arrow_attack' | 'axe_attack' | 'bomb_attack' | 'wall_attack' | 'state' | 'error' | 'player_joined' | 'player_left' | 'reconnect' | 'needsPromotion' | 'takeover' | 'games_updated' | 'watch_cvc' | 'stop_cvc' | 'pause_cvc' | 'offer_draw' | 'respond_draw' | 'draw_offered' | 'draw_response' | 'handoff' | 'take_control' | 'budget_submit';
   payload: any;
   playerId?: string;
 }
@@ -121,13 +125,13 @@ export interface GameMessage {
 export const gameConfigSchema = z.object({
   maxWallsPerPlayer: z.number().min(0).max(32).default(8),
   attackSettings: z.object({
-    pawnSuccessRoll: z.number().min(0).max(6).default(1),
+    pawnSuccessRoll: z.number().min(0).max(6).default(6),
     bishopMinRoll: z.number().min(0).max(12).default(0),
     knightMinRoll: z.number().min(1).max(7).default(4),
     bombSuccessRoll: z.number().min(0).max(10).default(1),
     wallBuildRoll: z.number().min(0).max(10).default(5),
     totalAttackBudget: z.number().min(0).max(500).default(250).optional(),
-    pawnAttackPercent: z.number().min(0).max(100).default(17).optional(),
+    pawnAttackPercent: z.number().min(0).max(100).default(100).optional(),
     bishopAttackPercent: z.number().min(0).max(100).default(50).optional(),
     knightAttackPercent: z.number().min(0).max(100).default(50).optional(),
     bombAttackPercent: z.number().min(0).max(100).default(10).optional(),

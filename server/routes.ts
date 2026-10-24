@@ -179,7 +179,8 @@ export async function registerRoutes(
       const maxWalls = req.body?.maxWalls ?? 8;
       const attackSettings = req.body?.attackSettings;
       const aiDepth = req.body?.aiDepth ?? 0;
-      const result = gameManager.createCvCGame(maxWalls, attackSettings, aiDepth);
+      const computerPolicy = req.body?.computerPolicy;
+      const result = gameManager.createCvCGame(maxWalls, attackSettings, aiDepth, computerPolicy);
       res.json({
         gameId: result.gameId,
         phase: result.state.phase,
@@ -217,7 +218,7 @@ export async function registerRoutes(
         switch (message.type) {
           case 'join': {
             if (message.payload.action === 'create') {
-              const result = gameManager.createGame(ws, message.payload.maxWalls ?? 8, message.payload.gameMode || 'pvp', message.payload.attackSettings, message.payload.budgetMode, message.payload.aiDepth);
+              const result = gameManager.createGame(ws, message.payload.maxWalls ?? 8, message.payload.gameMode || 'pvp', message.payload.attackSettings, message.payload.budgetMode, message.payload.aiDepth, message.payload.computerPolicy);
               currentPlayerId = result.playerId;
               currentGameId = result.gameId;
 
@@ -559,9 +560,10 @@ export async function registerRoutes(
           case 'handoff': {
             // Hand off control to AI
             if (currentPlayerId && currentGameId) {
+              const gameId = currentGameId;
               const state = gameManager.handoffToAI(currentPlayerId);
               if (state) {
-                const room = gameManager.getRoom(currentGameId);
+                const room = gameManager.getRoom(gameId);
                 if (room) {
                   broadcastToRoom(room, {
                     type: 'state',
@@ -569,11 +571,11 @@ export async function registerRoutes(
                   });
                   
                   // Trigger AI move if it's now AI's turn
-                  if (gameManager.isAITurn(currentGameId)) {
+                  if (gameManager.isAITurn(gameId)) {
                     setTimeout(async () => {
-                      const result = await gameManager.makeAIMove(currentGameId, createPlyBroadcaster(currentGameId!));
+                      const result = await gameManager.makeAIMove(gameId, createPlyBroadcaster(gameId));
                       if (result) {
-                        const updatedRoom = gameManager.getRoom(currentGameId);
+                        const updatedRoom = gameManager.getRoom(gameId);
                         if (updatedRoom) {
                           broadcastToRoom(updatedRoom, {
                             type: 'state',
@@ -582,12 +584,12 @@ export async function registerRoutes(
                           
                           // Continue AI moves if needed (with longer delay for special attacks)
                           const checkAndMakeAIMove = (lastWasSpecial: boolean) => {
-                            if (gameManager.isAITurn(currentGameId)) {
+                            if (gameManager.isAITurn(gameId)) {
                               const delay = lastWasSpecial ? 1500 : 800;
                               setTimeout(async () => {
-                                const aiResult = await gameManager.makeAIMove(currentGameId, createPlyBroadcaster(currentGameId!));
+                                const aiResult = await gameManager.makeAIMove(gameId, createPlyBroadcaster(gameId));
                                 if (aiResult) {
-                                  const rm = gameManager.getRoom(currentGameId);
+                                  const rm = gameManager.getRoom(gameId);
                                   if (rm) {
                                     broadcastToRoom(rm, {
                                       type: 'state',

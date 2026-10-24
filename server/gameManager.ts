@@ -2,12 +2,28 @@ import { randomUUID, randomBytes } from "crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { GameState, Board, Square, Piece, Position, PlayerColor, Move, PieceType, GameMessage, GameMode, AttackSettings } from "@shared/schema";
+import type { GameState, Board, Square, Piece, Position, PlayerColor, Move, PieceType, GameMessage, GameMode, AttackSettings, ComputerPolicyId } from "@shared/schema";
 import type { WebSocket } from "ws";
+import { actionIsLegal, chooseComputerAction } from "./policy/choose.ts";
+import { parseSquare } from "./policy/notation.ts";
 
 const BOARD_SIZE = 12;
 const MAX_MOVE_DISTANCE = 8;
 const AI_PLAYER_ID = 'ai-player';
+
+function withCertainPawnAttacks<T extends AttackSettings>(settings: T): T {
+  return { ...settings, pawnAttackPercent: 100, pawnSuccessRoll: 6 };
+}
+
+function normalizePawnSettings(state: GameState): void {
+  state.attackSettings = withCertainPawnAttacks(state.attackSettings);
+  if (state.whiteAttackSettings) state.whiteAttackSettings = withCertainPawnAttacks(state.whiteAttackSettings);
+  if (state.blackAttackSettings) state.blackAttackSettings = withCertainPawnAttacks(state.blackAttackSettings);
+}
+
+function policyIdOf(state: GameState): ComputerPolicyId {
+  return state.computerPolicy === 'legacy' ? 'legacy' : 'cand-r32';
+}
 
 function generateShortId(length = 9): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz';
@@ -310,7 +326,7 @@ interface GameRoom {
   attackCounts: PerGameStats;
 }
 
-class GameManager {
+export class GameManager {
   private games: Map<string, GameRoom> = new Map();
   private playerToGame: Map<string, string> = new Map();
   private trackedGameIds: Set<string> = new Set();
@@ -341,12 +357,18 @@ class GameManager {
   getAttackSettingsForColor(state: GameState, color: PlayerColor): AttackSettings {
     if (state.budgetMode === 'individual') {
       const perPlayer = color === 'white' ? state.whiteAttackSettings : state.blackAttackSettings;
-      if (perPlayer) return perPlayer;
+      if (perPlayer) return withCertainPawnAttacks(perPlayer);
     }
-    return state.attackSettings;
+    return withCertainPawnAttacks(state.attackSettings);
+  }
+
+  /** One attack roll. Pawn attacks always succeed. Other kinds are unchanged. */
+  resolveAttack(attackType: 'pawn' | 'bishop' | 'knight' | 'bomb' | 'wallBuild', settings: AttackSettings, distance?: number): boolean {
+    return this.checkAttackSuccess(settings, attackType, distance);
   }
 
   private checkAttackSuccess(settings: AttackSettings, attackType: 'pawn' | 'bishop' | 'knight' | 'bomb' | 'wallBuild', distance?: number): boolean {
+    if (attackType === 'pawn') return true;
     const percentMap: Record<string, number | undefined> = {
       pawn: settings.pawnAttackPercent,
       bishop: settings.bishopAttackPercent,
@@ -359,7 +381,6 @@ class GameManager {
       return Math.random() * 100 < percent;
     }
     switch (attackType) {
-      case 'pawn': return Math.floor(Math.random() * 6) + 1 <= (settings.pawnSuccessRoll ?? 1);
       case 'bishop': {
         const die1 = Math.floor(Math.random() * 6) + 1;
         const die2 = Math.floor(Math.random() * 6) + 1;
@@ -399,13 +420,15 @@ class GameManager {
       // Add default attackSettings for old games that don't have them
       if (!state.attackSettings) {
         state.attackSettings = {
-          pawnSuccessRoll: 1,
+          pawnSuccessRoll: 6,
           bishopMinRoll: 0,
           knightMinRoll: 4,
           bombSuccessRoll: 1,
           wallBuildRoll: 5,
+          pawnAttackPercent: 100,
         };
       }
+      normalizePawnSettings(state);
       return state;
     } catch (error) {
       console.error(`Failed to load game ${gameId}:`, error);
@@ -534,21 +557,22 @@ class GameManager {
     return state;
   }
 
-  createGame(ws: WebSocket, maxWalls: number, gameMode: GameMode = 'pvp', attackSettings?: AttackSettings, budgetMode?: 'shared' | 'individual', aiDepth?: number): { gameId: string; playerId: string; color: PlayerColor } {
+  createGame(ws: WebSocket, maxWalls: number, gameMode: GameMode = 'pvp', attackSettings?: AttackSettings, budgetMode?: 'shared' | 'individual', aiDepth?: number, computerPolicy?: ComputerPolicyId): { gameId: string; playerId: string; color: PlayerColor } {
     const gameId = generateShortId();
     const playerId = generateShortId();
     
     const isVsComputer = gameMode === 'pvc';
     
     const defaultAttackSettings: AttackSettings = {
-      pawnSuccessRoll: 1,
+      pawnSuccessRoll: 6,
       bishopMinRoll: 0,
       knightMinRoll: 4,
       bombSuccessRoll: 1,
       wallBuildRoll: 5,
+      pawnAttackPercent: 100,
     };
     
-    const finalAttackSettings = attackSettings || defaultAttackSettings;
+    const finalAttackSettings = withCertainPawnAttacks(attackSettings || defaultAttackSettings);
     const effectiveBudgetMode = budgetMode || 'shared';
     
     const maxBishopAttacks = attackSettings?.maxBishopAttacks ?? 10;
@@ -572,6 +596,7 @@ class GameManager {
       budgetMode: effectiveBudgetMode,
       budgetReadyPlayers: [],
       aiDepth: Math.max(0, Math.min(8, aiDepth ?? 0)),
+      computerPolicy: computerPolicy === 'legacy' ? 'legacy' : 'cand-r32',
       maxBishopAttacks: Math.max(0, Math.min(75, maxBishopAttacks)),
       maxRookAttacks: Math.max(0, Math.min(75, maxRookAttacks)),
       specialAttackCounts: {},
@@ -623,18 +648,19 @@ class GameManager {
   }
 
   // Create a computer vs computer game that plays visibly
-  createCvCGame(maxWalls: number, attackSettings?: AttackSettings, aiDepth?: number): { gameId: string; state: GameState } {
+  createCvCGame(maxWalls: number, attackSettings?: AttackSettings, aiDepth?: number, computerPolicy?: ComputerPolicyId, autoplay = true): { gameId: string; state: GameState } {
     const gameId = generateShortId();
     
     const defaultAttackSettings: AttackSettings = {
-      pawnSuccessRoll: 1,
+      pawnSuccessRoll: 6,
       bishopMinRoll: 0,
       knightMinRoll: 4,
       bombSuccessRoll: 1,
       wallBuildRoll: 5,
+      pawnAttackPercent: 100,
     };
     
-    const finalSettings = attackSettings || defaultAttackSettings;
+    const finalSettings = withCertainPawnAttacks(attackSettings || defaultAttackSettings);
     const state: GameState = {
       id: gameId,
       board: this.createInitialBoard(),
@@ -651,6 +677,7 @@ class GameManager {
       winner: null,
       attackSettings: finalSettings,
       aiDepth: Math.max(0, Math.min(8, aiDepth ?? 0)),
+      computerPolicy: computerPolicy === 'legacy' ? 'legacy' : 'cand-r32',
       maxBishopAttacks: Math.max(0, Math.min(75, finalSettings.maxBishopAttacks ?? 10)),
       maxRookAttacks: Math.max(0, Math.min(75, finalSettings.maxRookAttacks ?? 10)),
       specialAttackCounts: {},
@@ -671,7 +698,7 @@ class GameManager {
     this.saveGame(state);
     
     // Start the game with visible moves (500ms between moves)
-    this.startCvCGameLoop(gameId);
+    if (autoplay) this.startCvCGameLoop(gameId);
     
     return { gameId, state };
   }
@@ -829,6 +856,9 @@ class GameManager {
   }
   
   private makeCvCMove(state: GameState, color: PlayerColor): false | 'regular' | 'special' {
+    if (policyIdOf(state) !== 'legacy') {
+      return this.applyPolicyAction(state.id);
+    }
     const board = state.board;
     const inCheck = this.isInCheck(board, color);
     
@@ -1223,12 +1253,12 @@ class GameManager {
       from,
       to,
       piece,
-      captured: success ? targetPiece : undefined,
+      captured: success && targetPiece ? targetPiece : undefined,
       isArrowAttack: true,
       diceRoll: roll,
       diceRequired: 4,
       success,
-      notation: this.getMoveNotation(piece, from, to, success ? targetPiece : undefined, roll, true),
+      notation: this.getMoveNotation(piece, from, to, success && targetPiece ? targetPiece : undefined, roll, true),
     });
     
     if (success && targetPiece) {
@@ -1265,7 +1295,7 @@ class GameManager {
       from,
       to,
       piece,
-      captured: success ? targetPiece : undefined,
+      captured: success && targetPiece ? targetPiece : undefined,
       isAxeAttack: true,
       diceRoll: roll,
       diceRequired: settings?.knightMinRoll ?? 4,
@@ -1326,14 +1356,74 @@ class GameManager {
       this.checkGameEnd(state, color);
     }
   }
+
+  private executeCvCWallBuild(state: GameState, from: Position, to: Position): void {
+    const board = state.board;
+    const piece = board[from.row][from.col].piece;
+    if (!piece) return;
+    const color = piece.color;
+    const settings = this.getAttackSettingsForColor(state, color);
+    const roll = Math.floor(Math.random() * 10) + 1;
+    const empty = !board[to.row][to.col].piece && !board[to.row][to.col].isWall;
+    const success = empty && this.checkAttackSuccess(settings, 'wallBuild');
+    if (success) board[to.row][to.col].isWall = true;
+    state.lastDiceRoll = { value: roll, type: 'd10', success };
+    state.moveHistory.push({
+      from,
+      to,
+      piece,
+      isWallBuild: true,
+      diceRoll: roll,
+      diceRequired: settings.wallBuildRoll ?? 5,
+      success,
+      notation: `R${String.fromCharCode(97 + from.col)}${BOARD_SIZE - from.row}🧱${String.fromCharCode(97 + to.col)}${BOARD_SIZE - to.row}[d10:${roll}${success ? '✓' : '✗'}]`,
+    });
+    state.currentTurn = color === 'white' ? 'black' : 'white';
+    if (success) this.checkGameEnd(state, color);
+  }
+
+  /** Play one cand-r32 action onto the live state. Does not save. */
+  private applyPolicyAction(gameId: string): false | 'regular' | 'special' {
+    const room = this.games.get(gameId);
+    if (!room || room.state.phase !== 'playing') return false;
+    const state = room.state;
+    const action = chooseComputerAction(state);
+    if (!action || !actionIsLegal(state, action)) return false;
+    const from = parseSquare(action.from);
+    const to = parseSquare(action.to);
+    state.lastDiceRoll = undefined;
+    const before = state.moveHistory.length;
+    if (action.kind === 'arrow') this.executeCvCArrowAttack(state, from, to);
+    else if (action.kind === 'axe') this.executeCvCAxeAttack(state, from, to);
+    else if (action.kind === 'bomb') this.executeCvCBombAttack(state, from, to);
+    else if (action.kind === 'wall') this.executeCvCWallBuild(state, from, to);
+    else this.executeCvCMove(state, from, to);
+    if (state.moveHistory.length === before) return false;
+    const played = state.moveHistory[state.moveHistory.length - 1];
+    if (played.from.row !== from.row || played.from.col !== from.col || played.to.row !== to.row || played.to.col !== to.col) {
+      return false;
+    }
+    if (action.kind === 'arrow' || action.kind === 'bomb' || action.kind === 'wall') {
+      const piece = played.piece;
+      if (piece.id) {
+        if (!state.specialAttackCounts) state.specialAttackCounts = {};
+        state.specialAttackCounts[piece.id] = (state.specialAttackCounts[piece.id] ?? 0) + 1;
+      }
+      if (action.kind === 'arrow') this.recordAttackStat(gameId, 'bishopArrow');
+      else if (action.kind === 'bomb') this.recordAttackStat(gameId, 'rookBomb');
+      else this.recordAttackStat(gameId, 'rookWallBuild');
+    }
+    return action.kind === 'move' && !state.lastDiceRoll ? 'regular' : 'special';
+  }
   
   // Allow a human to take over a color in a saved game
   takeoverGame(ws: WebSocket, gameId: string, color: PlayerColor): { playerId: string; state: GameState } | null {
     // Load game from file if not in memory
     let state = this.games.get(gameId)?.state;
     if (!state) {
-      state = this.loadGame(gameId);
-      if (!state) return null;
+      const loaded = this.loadGame(gameId);
+      if (!loaded) return null;
+      state = loaded;
     }
     
     const playerId = generateShortId();
@@ -1460,7 +1550,7 @@ class GameManager {
     const knightPct = Math.min(100, Math.round((weights[2] / totalWeight) * totalBudget));
     const bombPct = Math.min(100, Math.round((weights[3] / totalWeight) * totalBudget));
     const wallPct = Math.min(100, Math.round((weights[4] / totalWeight) * totalBudget));
-    return {
+    return withCertainPawnAttacks({
       pawnSuccessRoll: Math.round(pawnPct / 100 * 6),
       bishopMinRoll: 0,
       knightMinRoll: 6 + 1 - Math.round(knightPct / 100 * 6),
@@ -1472,7 +1562,7 @@ class GameManager {
       knightAttackPercent: knightPct,
       bombAttackPercent: bombPct,
       wallBuildPercent: wallPct,
-    };
+    });
   }
   
   handleBudgetSubmit(playerId: string, settings: AttackSettings): GameState | null {
@@ -1486,7 +1576,8 @@ class GameManager {
     if (!player) return null;
     
     const budget = room.state.attackSettings.totalAttackBudget || 250;
-    const total = (settings.pawnAttackPercent || 0) + (settings.bishopAttackPercent || 0) + 
+    // Pawn attacks are always 100% and are not drawn from the shared budget.
+    const total = (settings.bishopAttackPercent || 0) +
       (settings.knightAttackPercent || 0) + (settings.bombAttackPercent || 0) + (settings.wallBuildPercent || 0);
     
     if (total > budget) return null;
@@ -1497,7 +1588,7 @@ class GameManager {
     const bombPct = settings.bombAttackPercent || 0;
     const wallPct = settings.wallBuildPercent || 0;
     
-    const playerSettings: AttackSettings = {
+    const playerSettings: AttackSettings = withCertainPawnAttacks({
       pawnSuccessRoll: Math.round(pawnPct / 100 * 6),
       bishopMinRoll: 0,
       knightMinRoll: 6 + 1 - Math.round(knightPct / 100 * 6),
@@ -1509,7 +1600,7 @@ class GameManager {
       knightAttackPercent: knightPct,
       bombAttackPercent: bombPct,
       wallBuildPercent: wallPct,
-    };
+    });
     
     if (player.color === 'white') {
       room.state.whiteAttackSettings = playerSettings;
@@ -2619,6 +2710,18 @@ class GameManager {
   async makeAIMove(gameId: string, onPlyUpdate?: (ply: number, maxPly: number) => void): Promise<{ state: GameState; diceRoll?: { value: number; type: 'd4' | 'd6' | 'd10'; success: boolean } } | null> {
     const room = this.games.get(gameId);
     if (!room || !this.isAITurn(gameId)) return null;
+
+    if (policyIdOf(room.state) !== 'legacy') {
+      const kind = this.applyPolicyAction(gameId);
+      if (!kind) return null;
+      this.saveGame(room.state);
+      const dice = room.state.lastDiceRoll;
+      const diceType = dice && dice.type !== '2d6' ? dice.type : undefined;
+      return {
+        state: room.state,
+        diceRoll: dice && diceType ? { value: dice.value, type: diceType, success: dice.success } : undefined,
+      };
+    }
 
     const state = room.state;
     // Use current turn color when that player is AI-controlled, fallback to legacy aiColor
