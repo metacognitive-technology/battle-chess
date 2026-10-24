@@ -5,6 +5,10 @@
  * Each ply must be one of the policy legal actions. Pawn attacks must land.
  * Games stop at a finished position or at the ply cap. Walls are off so the
  * games stay on the opening policy and finish the check sooner.
+ *
+ * The cap is CVC_PLY_CAP (positive integer). Default 40. It only stops the
+ * smoke loop. It does not change move choice or attack resolution.
+ * Example: CVC_PLY_CAP=400 npm run cvc-smoke
  */
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -15,7 +19,18 @@ import { squareName } from '../server/policy/notation.ts';
 import type { AttackSettings, Move } from '../shared/schema.ts';
 
 const GAMES = 5;
-const PLY_CAP = 40;
+
+function readPlyCap(): number {
+  const raw = process.env.CVC_PLY_CAP;
+  if (raw === undefined || raw.trim() === '') return 40;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 10000) {
+    throw new Error(`CVC_PLY_CAP must be an integer from 1 to 10000, got ${JSON.stringify(raw)}`);
+  }
+  return n;
+}
+
+const PLY_CAP = readPlyCap();
 
 function moveKey(move: Move): string {
   const kind = move.isArrowAttack ? 'arrow'
@@ -58,7 +73,7 @@ async function main(): Promise<void> {
   ];
   const statsBefore = statsPaths.map((path) => ({ path, body: snapshot(path) }));
   const ids: string[] = [];
-  const games: { game: number; gameId: string; plies: number; finished: boolean; ms: number }[] = [];
+  const games: { game: number; gameId: string; plies: number; finished: boolean; winner: string | null; ms: number }[] = [];
   let illegalMoves = 0;
   let pawnAttacks = 0;
   let pawnHits = 0;
@@ -119,7 +134,10 @@ async function main(): Promise<void> {
         }
       }
 
-      const row = { game: g + 1, gameId, plies, finished, ms: Date.now() - started };
+      const end = gameManager.getRoom(gameId)?.state;
+      const winner = end?.phase === 'finished' ? (end.winner ?? null) : null;
+      if (end?.phase === 'finished') finished = true;
+      const row = { game: g + 1, gameId, plies, finished, winner, ms: Date.now() - started };
       games.push(row);
       console.log(`game ${g + 1} done ${JSON.stringify(row)}`);
     }
@@ -151,6 +169,7 @@ async function main(): Promise<void> {
     const report = {
       games: games.length,
       finished: games.filter((game) => game.finished).length,
+      winners: games.map((game) => game.winner),
       plies: games.map((game) => game.plies),
       totalPlies: games.reduce((sum, game) => sum + game.plies, 0),
       illegalMoves,
