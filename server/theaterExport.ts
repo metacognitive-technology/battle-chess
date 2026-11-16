@@ -200,15 +200,14 @@ function renderBoard(state: GameState): string {
   return lines.join("\n") + "\n";
 }
 
-function diceTypeFor(move: Move): DiceType {
-  if (move.isBombAttack || move.isWallBuild) return "d10";
-  if (move.isAxeAttack) return "d6";
-  if (move.isArrowAttack) {
-    if (move.diceRequired != null && move.diceRequired <= 4) return "d4";
-    if ((move.diceRoll ?? 0) > 4 || (move.diceRequired ?? 0) >= 12) return "2d6";
-    return "d4";
-  }
-  return "d6";
+/** Human bombs and axes were stored without their kind flag. The notation still names them. */
+function kindFromNotation(notation: string | null | undefined): "move" | "arrow" | "axe" | "bomb" | "wall" | null {
+  const note = notation || "";
+  if (note.includes("💣")) return "bomb";
+  if (note.includes("🧱")) return "wall";
+  if (note.includes("⚔") || note.includes("🪓")) return "axe";
+  if (note.includes("→")) return "arrow";
+  return null;
 }
 
 function kindFor(move: Move): "move" | "arrow" | "axe" | "bomb" | "wall" {
@@ -216,7 +215,19 @@ function kindFor(move: Move): "move" | "arrow" | "axe" | "bomb" | "wall" {
   if (move.isBombAttack) return "bomb";
   if (move.isAxeAttack) return "axe";
   if (move.isArrowAttack) return "arrow";
-  return "move";
+  return kindFromNotation(move.notation) ?? "move";
+}
+
+function diceTypeFor(move: Move): DiceType {
+  const kind = kindFor(move);
+  if (kind === "bomb" || kind === "wall") return "d10";
+  if (kind === "axe") return "d6";
+  if (kind === "arrow") {
+    if (move.diceRequired != null && move.diceRequired <= 4) return "d4";
+    if ((move.diceRoll ?? 0) > 4 || (move.diceRequired ?? 0) >= 12) return "2d6";
+    return "d4";
+  }
+  return "d6";
 }
 
 function opposite(color: "white" | "black"): "white" | "black" {

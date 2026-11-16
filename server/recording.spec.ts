@@ -14,6 +14,7 @@ import type { Board, GameState, Move, Position } from '@shared/schema';
 import { gameManager } from './gameManager.ts';
 import { readAnalysisQueue, resolveAnalysisQueuePath, resolveAttackStatsPath, resolveGamesDir } from './recording.ts';
 import { registerRoutes } from './routes.ts';
+import { exportToTheater } from './theaterExport.ts';
 import { parseSquare, squareName } from './policy/notation.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'bc-rec-'));
@@ -594,9 +595,83 @@ async function testQueueApi(): Promise<void> {
   }
 }
 
+function testExportKinds(): void {
+  const id = 'export-kind-bomb';
+  exportToTheater({
+    id,
+    board: blankBoard(),
+    currentTurn: 'black',
+    phase: 'finished',
+    winner: 'white',
+    moveHistory: [
+      {
+        from: { row: 5, col: 9 },
+        to: { row: 4, col: 8 },
+        piece: { type: 'rook', color: 'white' },
+        isArrowAttack: false,
+        diceRoll: 3,
+        diceRequired: 10,
+        success: true,
+        notation: 'Rj7💣i8[d10:3✓]',
+      },
+      {
+        from: { row: 6, col: 11 },
+        to: { row: 5, col: 11 },
+        piece: { type: 'rook', color: 'white' },
+        isWallBuild: true,
+        diceRoll: 7,
+        diceRequired: 10,
+        success: false,
+        notation: 'Rl6🧱l7[d10:7✗]',
+      },
+      {
+        from: { row: 8, col: 1 },
+        to: { row: 8, col: 2 },
+        piece: { type: 'knight', color: 'black' },
+        diceRoll: 1,
+        success: true,
+        notation: 'N🪓c4(1✓)',
+      },
+      {
+        from: { row: 10, col: 3 },
+        to: { row: 2, col: 3 },
+        piece: { type: 'bishop', color: 'white' },
+        isArrowAttack: true,
+        diceRoll: 2,
+        diceRequired: 4,
+        success: false,
+        notation: 'Bd2→d10[d4:2]',
+      },
+      {
+        from: { row: 11, col: 8 },
+        to: { row: 10, col: 6 },
+        piece: { type: 'knight', color: 'white' },
+        notation: 'Ki1g2',
+      },
+    ],
+  } as GameState);
+  const lines = readFileSync(join(theaterDir, `bc3003-${id}`, 'game.jsonl'), 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as { kind: string; dice: { type: string; value: number; success: boolean } | null; notation: string });
+  assert.equal(lines[0].kind, 'bomb');
+  assert.equal(lines[0].dice?.type, 'd10');
+  assert.equal(lines[0].dice?.value, 3);
+  assert.equal(lines[0].dice?.success, true);
+  assert.equal(lines[1].kind, 'wall');
+  assert.equal(lines[1].dice?.type, 'd10');
+  assert.equal(lines[2].kind, 'axe');
+  assert.equal(lines[2].dice?.type, 'd6');
+  assert.equal(lines[3].kind, 'arrow');
+  assert.equal(lines[3].dice?.type, 'd4');
+  assert.equal(lines[4].kind, 'move');
+  assert.equal(lines[4].dice, null);
+}
+
 async function main(): Promise<void> {
   try {
     testDirs();
+    testExportKinds();
     testAttackStatsMissingFile();
     testLayoutReadyAndExport();
     testAiRandomMazeAndDirectPlaying();
