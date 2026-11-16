@@ -9,6 +9,9 @@ services:
       - NODE_ENV=production
       - PORT=3003
       - THEATER_ROOMS_DIR=/theater-rooms
+      - GAMES_DIR=/app/data/games
+      - ANALYSIS_QUEUE_PATH=/app/data/games/analysis-queue.jsonl
+      - ATTACK_STATS_PATH=/app/data/stats/attack_stats.json
     healthcheck:
       test: ["CMD", "node", "-e", "fetch(\x27http://localhost:3003/health\x27).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -16,8 +19,10 @@ services:
       retries: 3
       start_period: 40s
     volumes:
-      # Persist saved games across restarts
-      - battle-chess-data:/app/server/data/games
+      # Durable saves and the analysis queue. GAMES_DIR is /app/data/games.
+      - /root/battle-chess-data/games:/app/data/games
+      # Attack stats. ATTACK_STATS_PATH is /app/data/stats/attack_stats.json.
+      - /root/battle-chess-data/stats:/app/data/stats
       - /root/battle-chess-lab/rooms:/theater-rooms
     labels:
       - "traefik.enable=true"
@@ -33,6 +38,3 @@ services:
       - "traefik.http.routers.battle-ws.tls.certresolver=letsencrypt"
       - "traefik.http.routers.battle-ws.service=battle"
       - "traefik.http.routers.battle-ws.priority=20"
-
-volumes:
-  battle-chess-data:

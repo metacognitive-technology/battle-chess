@@ -62,6 +62,8 @@ export function exportToTheater(state: GameState): void {
       lastDice: null,
       diceSucceeded: null,
       moveHistory: notations,
+      endingAction: state.endingAction ?? null,
+      endReason: state.endReason ?? null,
     };
 
     writeFileSync(join(tmp, "room.json"), JSON.stringify(room, null, 2), "utf-8");
@@ -131,7 +133,24 @@ function buildSettings(state: GameState, roomId: string) {
     whiteSplit: percentSplit(state.whiteAttackSettings ?? attack),
     blackSplit: percentSplit(state.blackAttackSettings ?? attack),
     gameMode: state.gameMode,
+    whiteWalls: wallNames(state.setupWalls?.white),
+    blackWalls: wallNames(state.setupWalls?.black),
+    endingAction: state.endingAction ?? null,
+    endReason: state.endReason ?? null,
   };
+}
+
+/** Square names for replay. Missing or unreadable records export as an empty list. */
+function wallNames(positions: Position[] | undefined | null): string[] {
+  if (!positions?.length) return [];
+  const names: string[] = [];
+  for (const pos of positions) {
+    if (!pos || typeof pos.row !== "number" || typeof pos.col !== "number") continue;
+    if (!Number.isInteger(pos.row) || !Number.isInteger(pos.col)) continue;
+    if (pos.row < 0 || pos.row >= BOARD_SIZE || pos.col < 0 || pos.col >= BOARD_SIZE) continue;
+    names.push(squareName(pos));
+  }
+  return names;
 }
 
 function squareName(pos: Position): string {

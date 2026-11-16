@@ -3,12 +3,19 @@
  * Run: npm test
  */
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gameManager } from '../gameManager.ts';
 import { createInitialBoard } from './gameUtils.ts';
 import { actionIsLegal, chooseComputerAction, loadChampionGenome } from './choose.ts';
 import type { AttackSettings, GameState } from './types.ts';
+
+const tempRoot = mkdtempSync(join(tmpdir(), 'bc-policy-'));
+process.env.GAMES_DIR = join(tempRoot, 'games');
+process.env.ANALYSIS_QUEUE_PATH = join(tempRoot, 'games', 'analysis-queue.jsonl');
+process.env.ATTACK_STATS_PATH = join(tempRoot, 'attack_stats.json');
+process.env.THEATER_ROOMS_DIR = join(tempRoot, 'theater-missing');
 
 const GENOME_PATH = join(process.cwd(), 'server', 'policy', 'genomes', 'cand-r32.json');
 const created: string[] = [];
@@ -174,12 +181,8 @@ function testGameDefaults(): void {
   assert.equal(accepted.whiteAttackSettings?.bishopAttackPercent, 100);
   assert.equal(accepted.whiteAttackSettings?.knightAttackPercent, 100);
 
-  const fileCandidates = [
-    join(process.cwd(), 'server', 'data', 'games', `${cvc.gameId}.json`),
-    join(process.cwd(), 'data', 'games', `${cvc.gameId}.json`),
-  ];
-  const file = fileCandidates.find((path) => existsSync(path));
-  assert.ok(file, 'saved game file');
+  const file = join(process.env.GAMES_DIR!, `${cvc.gameId}.json`);
+  assert.equal(existsSync(file), true, 'saved game file');
   const saved = JSON.parse(readFileSync(file, 'utf8')) as GameState;
   saved.attackSettings.pawnAttackPercent = 17;
   saved.attackSettings.pawnSuccessRoll = 1;

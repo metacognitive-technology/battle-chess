@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { gameManager } from "./gameManager";
 import type { GameMessage } from "@shared/schema";
+import { readAnalysisQueue } from "./recording";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -161,6 +162,15 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Failed to delete layout:', error);
       res.status(500).json({ error: 'Failed to delete layout' });
+    }
+  });
+
+  app.get('/api/analysis-queue', (_req, res) => {
+    try {
+      res.json(readAnalysisQueue());
+    } catch (error) {
+      console.error('Failed to read analysis queue:', error);
+      res.status(500).json({ error: 'Failed to read analysis queue' });
     }
   });
 
@@ -513,7 +523,7 @@ export async function registerRoutes(
           case 'stop_cvc': {
             // Handle stopping a CvC game
             if (currentGameId) {
-              const state = gameManager.stopCvCGame(currentGameId);
+              const state = gameManager.stopCvCGame(currentGameId, currentPlayerId);
               if (state) {
                 const room = gameManager.getRoom(currentGameId);
                 if (room) {
@@ -560,14 +570,13 @@ export async function registerRoutes(
               const room = gameManager.getRoom(currentGameId);
               if (room) {
                 if (message.payload.accept) {
-                  // Draw accepted - end the game
-                  room.state.phase = 'finished';
-                  room.state.winner = 'draw';
-                  gameManager.saveGame(room.state);
-                  broadcastToRoom(room, {
-                    type: 'state',
-                    payload: { state: room.state },
-                  });
+                  const state = gameManager.acceptDraw(currentGameId, currentPlayerId);
+                  if (state) {
+                    broadcastToRoom(room, {
+                      type: 'state',
+                      payload: { state },
+                    });
+                  }
                 } else {
                   // Draw declined - notify the opponent
                   room.players.forEach((player, id) => {

@@ -1,12 +1,18 @@
-import { randomUUID, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import type { GameState, Board, Square, Piece, Position, PlayerColor, Move, PieceType, GameMessage, GameMode, AttackSettings, ComputerPolicyId } from "@shared/schema";
 import type { WebSocket } from "ws";
 import { exportToTheater } from "./theaterExport";
 import { actionIsLegal, chooseComputerAction } from "./policy/choose.ts";
 import { parseSquare } from "./policy/notation.ts";
+import {
+  enqueueFinishedGame,
+  markGameFinished,
+  recordSetupWalls,
+  resolveAttackStatsPath,
+  resolveGamesDir,
+} from "./recording";
 
 const BOARD_SIZE = 12;
 const MAX_MOVE_DISTANCE = 8;
@@ -220,35 +226,6 @@ function findKingPosition(board: Board, color: PlayerColor): Position | null {
   return null;
 }
 
-// Get the directory for saving game files - handle both ESM and CJS
-// Use a function to safely get __dirname in both environments
-function getCurrentDir(): string {
-  try {
-    // In CJS environment (production bundle), __dirname is available
-    if (typeof __dirname !== 'undefined') {
-      return __dirname;
-    }
-  } catch {
-    // __dirname not defined in ESM
-  }
-  
-  // ESM environment - compute from import.meta.url
-  try {
-    return dirname(fileURLToPath(import.meta.url));
-  } catch {
-    // Fallback to process.cwd() if all else fails
-    return process.cwd();
-  }
-}
-
-const GAMES_DIR = join(getCurrentDir(), 'data', 'games');
-const STATS_FILE = join(getCurrentDir(), 'data', 'attack_stats.json');
-
-// Ensure games directory exists
-if (!existsSync(GAMES_DIR)) {
-  mkdirSync(GAMES_DIR, { recursive: true });
-}
-
 export interface PerGameStats {
   bishopArrows: number;
   rookBombs: number;
@@ -268,8 +245,9 @@ export interface AttackStatsResponse {
 
 function loadAttackStatsFile(): AttackStatsFile {
   try {
-    if (existsSync(STATS_FILE)) {
-      const data = JSON.parse(readFileSync(STATS_FILE, 'utf-8'));
+    const statsFile = resolveAttackStatsPath();
+    if (existsSync(statsFile)) {
+      const data = JSON.parse(readFileSync(statsFile, 'utf-8'));
       if (Array.isArray(data.games)) return data;
     }
   } catch {}
@@ -278,7 +256,10 @@ function loadAttackStatsFile(): AttackStatsFile {
 
 function saveAttackStatsFile(stats: AttackStatsFile): void {
   try {
-    writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), 'utf-8');
+    const statsFile = resolveAttackStatsPath();
+    const dir = dirname(statsFile);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(statsFile, JSON.stringify(stats, null, 2), 'utf-8');
   } catch (error) {
     console.error('Failed to save attack stats:', error);
   }
@@ -404,12 +385,59 @@ export class GameManager {
 
   // File persistence methods
   private getGameFilePath(gameId: string): string {
-    return join(GAMES_DIR, `${gameId}.json`);
+    return join(resolveGamesDir(), `${gameId}.json`);
+  }
+
+  /** Set phase to playing and snapshot setup walls already on the board. */
+  private enterPlaying(state: GameState): void {
+    state.phase = 'playing';
+    recordSetupWalls(state);
+  }
+
+  /**
+   * Board finishes set winner and phase before this runs.
+   * King capture wins over checkmate. A draw with no king capture is stalemate.
+   * Manual finishes set endingAction themselves and this does nothing.
+   */
+  private sealBoardFinish(state: GameState, mover: PlayerColor): void {
+    if (state.phase !== 'finished' || state.endingAction) return;
+    const last = state.moveHistory[state.moveHistory.length - 1];
+    if (last?.captured?.type === 'king') {
+      markGameFinished(state, { kind: 'king_capture', by: mover });
+      return;
+    }
+    if (state.winner === 'draw') {
+      markGameFinished(state, { kind: 'stalemate', by: mover, detail: 'no legal moves' });
+      return;
+    }
+    if (state.winner === 'white' || state.winner === 'black') {
+      markGameFinished(state, { kind: 'checkmate', by: mover });
+    }
+  }
+
+  /** Stamp a live game that is about to be removed, then export and enqueue it. */
+  private noteLiveRemoval(state: GameState | null, by: string | null): void {
+    if (!state) return;
+    if (state.phase === 'finished' || state.winner || state.endingAction) return;
+    markGameFinished(state, {
+      kind: 'deleted',
+      by: null,
+      detail: 'deleted while live',
+      manual: { reason: 'deleted', by, color: null },
+    });
+    exportToTheater(state);
+    try {
+      enqueueFinishedGame(state);
+    } catch (error) {
+      console.error(`Failed to enqueue deleted game ${state.id}:`, error);
+    }
   }
 
   saveGame(state: GameState): void {
     try {
       const filePath = this.getGameFilePath(state.id);
+      const dir = dirname(filePath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const data = JSON.stringify(state, null, 2);
       writeFileSync(filePath, data, 'utf-8');
     } catch (error) {
@@ -420,6 +448,11 @@ export class GameManager {
     }
     if (gameIsOver(state)) {
       exportToTheater(state);
+      try {
+        enqueueFinishedGame(state);
+      } catch (error) {
+        console.error(`Failed to enqueue analysis for ${state.id}:`, error);
+      }
     }
   }
 
@@ -450,12 +483,14 @@ export class GameManager {
 
   listSavedGames(): SavedGameInfo[] {
     try {
-      const files = readdirSync(GAMES_DIR).filter(f => f.endsWith('.json'));
+      const gamesDir = resolveGamesDir();
+      if (!existsSync(gamesDir)) return [];
+      const files = readdirSync(gamesDir).filter(f => f.endsWith('.json'));
       const games: SavedGameInfo[] = [];
 
       for (const file of files) {
         try {
-          const filePath = join(GAMES_DIR, file);
+          const filePath = join(gamesDir, file);
           const stat = statSync(filePath);
           const data = readFileSync(filePath, 'utf-8');
           const state = JSON.parse(data) as GameState;
@@ -490,22 +525,19 @@ export class GameManager {
       if (!existsSync(filePath)) {
         return false;
       }
-      
-      // Load game to check ownership if playerId provided
-      if (requestingPlayerId) {
-        const state = this.loadGame(gameId);
-        if (state) {
-          const isOwner = state.players.white === requestingPlayerId || 
-                          state.players.black === requestingPlayerId;
-          if (!isOwner) {
-            return false;
-          }
+
+      const state = this.games.get(gameId)?.state ?? this.loadGame(gameId);
+      if (requestingPlayerId && state) {
+        const isOwner = state.players.white === requestingPlayerId ||
+                        state.players.black === requestingPlayerId;
+        if (!isOwner) {
+          return false;
         }
       }
-      
-      // Remove from memory if present
+
+      this.noteLiveRemoval(state, requestingPlayerId ?? null);
       this.games.delete(gameId);
-      
+
       unlinkSync(filePath);
       return true;
     } catch (error) {
@@ -516,20 +548,21 @@ export class GameManager {
 
   deleteAllGames(): number {
     try {
-      if (!existsSync(GAMES_DIR)) {
+      const gamesDir = resolveGamesDir();
+      if (!existsSync(gamesDir)) {
         return 0;
       }
       
-      const files = readdirSync(GAMES_DIR);
+      const files = readdirSync(gamesDir);
       let deleted = 0;
       
       for (const file of files) {
         if (file.endsWith('.json')) {
           const gameId = file.replace('.json', '');
           try {
-            // Remove from memory if present
+            const state = this.games.get(gameId)?.state ?? this.loadGame(gameId);
+            this.noteLiveRemoval(state, 'admin');
             this.games.delete(gameId);
-            // Delete file
             unlinkSync(this.getGameFilePath(gameId));
             deleted++;
           } catch (e) {
@@ -639,6 +672,8 @@ export class GameManager {
       room.readyPlayers.add(AI_PLAYER_ID);
       this.placeAIWalls(state, maxWalls);
     }
+    // Zero-wall games start in playing. Walled games wait until both sides are ready.
+    if (state.phase === 'playing') recordSetupWalls(state);
     
     this.games.set(gameId, room);
     this.playerToGame.set(playerId, gameId);
@@ -751,6 +786,7 @@ export class GameManager {
       whiteAttackSettings: { ...finalAttackSettings },
       blackAttackSettings: { ...finalAttackSettings },
     };
+    recordSetupWalls(state);
 
     const room: GameRoom = {
       state,
@@ -810,9 +846,10 @@ export class GameManager {
       specialAttackCounts: {},
     };
     
-    // Place walls for both sides
+    // Place walls for both sides, then snapshot them. CvC skips the setup phase.
     this.placeCvCWalls(state, maxWalls, 'white');
     this.placeCvCWalls(state, maxWalls, 'black');
+    recordSetupWalls(state);
     
     const room: GameRoom = {
       state,
@@ -855,23 +892,31 @@ export class GameManager {
       if (!moveResult) {
         const inCheck = this.isInCheck(state.board, currentColor);
         if (inCheck) {
-          state.winner = currentColor === 'white' ? 'black' : 'white';
+          const winner: PlayerColor = currentColor === 'white' ? 'black' : 'white';
+          state.winner = winner;
+          markGameFinished(state, { kind: 'checkmate', by: winner, detail: 'no legal move', notation: null });
         } else {
           state.winner = 'draw';
+          markGameFinished(state, { kind: 'stalemate', by: null, detail: 'no legal move', notation: null });
         }
-        state.phase = 'finished';
         this.saveGame(state);
         this.onCvCStateUpdate?.(gameId, state);
         this.cvcIntervals.delete(gameId);
         return;
       }
-      
+
+      this.sealBoardFinish(state, currentColor);
       this.saveGame(state);
       this.onCvCStateUpdate?.(gameId, state);
+
+      if (state.phase === 'finished') {
+        this.cvcIntervals.delete(gameId);
+        return;
+      }
       
       if (state.moveHistory.length >= MAX_MOVES) {
         state.winner = 'draw';
-        state.phase = 'finished';
+        markGameFinished(state, { kind: 'max_moves', by: null, detail: `move limit ${MAX_MOVES}` });
         this.saveGame(state);
         this.onCvCStateUpdate?.(gameId, state);
         this.cvcIntervals.delete(gameId);
@@ -889,7 +934,7 @@ export class GameManager {
   
   // Join as observer for CvC game
   // Stop a CvC game (for resign/stop functionality)
-  stopCvCGame(gameId: string): GameState | null {
+  stopCvCGame(gameId: string, by?: string | null): GameState | null {
     const room = this.games.get(gameId);
     if (!room || room.state.gameMode !== 'cvc') return null;
     
@@ -899,12 +944,36 @@ export class GameManager {
       clearTimeout(timeout);
       this.cvcIntervals.delete(gameId);
     }
+
+    if (room.state.phase !== 'finished') {
+      const actor = by ?? null;
+      const player = actor ? room.players.get(actor) : undefined;
+      room.state.winner = null;
+      markGameFinished(room.state, {
+        kind: 'stopped',
+        by: null,
+        detail: 'cvc stopped',
+        manual: { reason: 'stopped', by: actor, color: player?.color ?? null },
+      });
+      this.saveGame(room.state);
+    }
     
-    // Mark game as finished (draw/stopped)
-    room.state.phase = 'finished';
-    room.state.winner = null; // Stopped, no winner
+    return room.state;
+  }
+
+  /** Both players agreed to a draw. */
+  acceptDraw(gameId: string, playerId: string): GameState | null {
+    const room = this.games.get(gameId);
+    if (!room || room.state.phase !== 'playing') return null;
+    const player = room.players.get(playerId);
+    room.state.winner = 'draw';
+    markGameFinished(room.state, {
+      kind: 'draw_agreed',
+      by: player?.color ?? null,
+      detail: 'draw accepted',
+      manual: { reason: 'draw_agreed', by: playerId, color: player?.color ?? null },
+    });
     this.saveGame(room.state);
-    
     return room.state;
   }
   
@@ -1533,6 +1602,7 @@ export class GameManager {
       // Check for checkmate or stalemate
       this.checkGameEnd(state, color);
     }
+    this.sealBoardFinish(state, color);
   }
   
   private executeCvCArrowAttack(state: GameState, from: Position, to: Position): void {
@@ -1568,6 +1638,7 @@ export class GameManager {
       if (targetPiece.type === 'king') {
         state.winner = color;
         state.phase = 'finished';
+        this.sealBoardFinish(state, color);
         return;
       }
     }
@@ -1576,6 +1647,7 @@ export class GameManager {
     state.currentTurn = enemyColor;
     
     this.checkGameEnd(state, color);
+    this.sealBoardFinish(state, color);
   }
   
   private executeCvCAxeAttack(state: GameState, from: Position, to: Position): void {
@@ -1610,6 +1682,7 @@ export class GameManager {
       if (targetPiece.type === 'king') {
         state.winner = color;
         state.phase = 'finished';
+        this.sealBoardFinish(state, color);
         return;
       }
     }
@@ -1618,6 +1691,7 @@ export class GameManager {
     state.currentTurn = enemyColor;
     
     this.checkGameEnd(state, color);
+    this.sealBoardFinish(state, color);
   }
   
   private executeCvCBombAttack(state: GameState, from: Position, to: Position): void {
@@ -1655,6 +1729,7 @@ export class GameManager {
     if (success) {
       this.checkGameEnd(state, color);
     }
+    this.sealBoardFinish(state, color);
   }
 
   private executeCvCWallBuild(state: GameState, from: Position, to: Position): void {
@@ -1680,6 +1755,7 @@ export class GameManager {
     });
     state.currentTurn = color === 'white' ? 'black' : 'white';
     if (success) this.checkGameEnd(state, color);
+    this.sealBoardFinish(state, color);
   }
 
   /** Play one cand-r32 action onto the live state. Does not save. */
@@ -1834,7 +1910,7 @@ export class GameManager {
     } else if (room.state.maxWallsPerPlayer > 0) {
       room.state.phase = 'setup';
     } else {
-      room.state.phase = 'playing';
+      this.enterPlaying(room.state);
     }
     
     this.saveGame(room.state);
@@ -1922,7 +1998,7 @@ export class GameManager {
       if (room.state.maxWallsPerPlayer > 0) {
         room.state.phase = 'setup';
       } else {
-        room.state.phase = 'playing';
+        this.enterPlaying(room.state);
       }
     }
     
@@ -2282,9 +2358,9 @@ export class GameManager {
     
     room.readyPlayers.add(playerId);
     
-    // If both players ready, start the game
+    // If both players ready, start the game and snapshot the walls now on the board.
     if (room.readyPlayers.size >= 2) {
-      room.state.phase = 'playing';
+      this.enterPlaying(room.state);
     }
     
     // Save game to file
@@ -2306,7 +2382,12 @@ export class GameManager {
     // Handle resignation
     if (resign) {
       room.state.winner = player.color === 'white' ? 'black' : 'white';
-      room.state.phase = 'finished';
+      markGameFinished(room.state, {
+        kind: 'resignation',
+        by: player.color,
+        detail: 'resignation',
+        manual: { reason: 'resignation', by: playerId, color: player.color },
+      });
       this.saveGame(room.state);
       return { state: room.state };
     }
@@ -2410,10 +2491,11 @@ export class GameManager {
     room.state.currentTurn = player.color === 'white' ? 'black' : 'white';
     
     // Check for checkmate
-    if (this.isCheckmate(board, room.state.currentTurn)) {
+    if (room.state.phase !== 'finished' && this.isCheckmate(board, room.state.currentTurn)) {
       room.state.winner = player.color;
       room.state.phase = 'finished';
     }
+    this.sealBoardFinish(room.state, player.color);
     
     // Save game to file
     this.saveGame(room.state);
@@ -2520,6 +2602,7 @@ export class GameManager {
       room.state.winner = player.color;
       room.state.phase = 'finished';
     }
+    this.sealBoardFinish(room.state, player.color);
     
     // Save game to file
     this.saveGame(room.state);
@@ -2593,6 +2676,7 @@ export class GameManager {
       room.state.winner = player.color;
       room.state.phase = 'finished';
     }
+    this.sealBoardFinish(room.state, player.color);
     
     // Save game to file
     this.saveGame(room.state);
@@ -3671,10 +3755,11 @@ export class GameManager {
 
     state.currentTurn = aiColor === 'white' ? 'black' : 'white';
 
-    if (this.isCheckmate(board, state.currentTurn)) {
+    if (state.phase !== 'finished' && this.isCheckmate(board, state.currentTurn)) {
       state.winner = aiColor;
       state.phase = 'finished';
     }
+    this.sealBoardFinish(state, aiColor);
 
     this.saveGame(state);
     return { state, diceRoll };
@@ -3745,6 +3830,7 @@ export class GameManager {
       state.winner = aiColor;
       state.phase = 'finished';
     }
+    this.sealBoardFinish(state, aiColor);
 
     this.saveGame(state);
     return { state, diceRoll };
@@ -3802,6 +3888,7 @@ export class GameManager {
       state.winner = aiColor;
       state.phase = 'finished';
     }
+    this.sealBoardFinish(state, aiColor);
 
     this.saveGame(state);
     return { state, diceRoll };

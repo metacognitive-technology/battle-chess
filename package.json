@@ -8,7 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "test": "tsx server/policy/policy.spec.ts",
+    "test": "tsx server/policy/policy.spec.ts && tsx server/recording.spec.ts",
     "cvc-smoke": "tsx script/cvc-smoke.ts",
     "db:push": "drizzle-kit push"
   },

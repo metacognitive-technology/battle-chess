@@ -61,6 +61,41 @@ export interface Move {
 export type PromotionPieceType = 'queen' | 'rook' | 'bishop' | 'knight';
 
 export type GamePhase = 'waiting' | 'budget_setup' | 'setup' | 'playing' | 'finished';
+
+/** How a game stopped. Board results and manual stops share this record. */
+export type EndingKind =
+  | 'checkmate'
+  | 'king_capture'
+  | 'stalemate'
+  | 'resignation'
+  | 'max_moves'
+  | 'draw_agreed'
+  | 'stopped'
+  | 'deleted';
+
+/** Manual endings. `by` is a player id, "admin", or null when the actor is unknown. */
+export type ManualEndReason = 'resignation' | 'draw_agreed' | 'stopped' | 'deleted';
+
+export interface EndingAction {
+  kind: EndingKind;
+  /** Side that delivered the finish, or the resigner. Null when no side owns the action. */
+  by: PlayerColor | null;
+  /** ISO timestamp. */
+  at: string;
+  /** Notation of the finishing ply. Null for resignations, stops, and no-move finishes. */
+  notation: string | null;
+  /** 1-based index into moveHistory when the finish is tied to a ply. */
+  ply: number | null;
+  detail?: string;
+}
+
+export interface EndReason {
+  reason: ManualEndReason;
+  by: string | null;
+  color: PlayerColor | null;
+  /** ISO timestamp. */
+  at: string;
+}
 export type GameMode = 'pvp' | 'pvc' | 'cvc';
 export type BudgetMode = 'shared' | 'individual';
 /** cand-r32 is the FILTER champion. legacy is the previous heuristic computer. */
@@ -94,8 +129,17 @@ export interface GameState {
   /** Computer-player policy. Omitted games use cand-r32. */
   computerPolicy?: ComputerPolicyId;
   setupWallsRemaining: { white: number; black: number };
+  /**
+   * Walls on the board when play began, split by half.
+   * Absent on saves written before this field existed.
+   */
+  setupWalls?: { white: Position[]; black: Position[] };
   maxWallsPerPlayer: number;
   moveHistory: Move[];
+  /** Present once the game has finished. Absent on older saves. */
+  endingAction?: EndingAction;
+  /** Present when a person stopped the game. Absent on older saves and on board finishes. */
+  endReason?: EndReason;
   capturedPieces: { white: Piece[]; black: Piece[] };
   players: { white: string | null; black: string | null };
   winner: PlayerColor | 'draw' | null;
